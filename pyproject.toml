@@ -1,0 +1,15 @@
+[project]
+name = "project-qwe"
+version = "0.1.0"
+description = "Something about python learnings"
+readme = "README.md"
+authors = [{ name = "Prasanna Kumar", email = "prasannaboga@gmail.com" }]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+project-qwe = "project_qwe:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
