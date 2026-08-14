@@ -1,2 +1,7 @@
 *.cpython-314.pyc
 *.pyc
+__pycache__/
+.venv/
+.pytest_cache/
+data/*.sqlite
+mynotes.md
