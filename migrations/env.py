@@ -15,7 +15,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 from project_qwe.config.database import Base
+from project_qwe.config.settings import settings
 import project_qwe.models  # noqa: F401
+
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

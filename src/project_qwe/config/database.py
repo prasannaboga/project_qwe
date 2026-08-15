@@ -2,18 +2,24 @@ from collections.abc import Generator
 from pathlib import Path
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+from project_qwe.config.settings import settings
 
-DATABASE_PATH = DATA_DIR / "development.sqlite"
-DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+url_obj = make_url(settings.DATABASE_URL)
+if url_obj.database and url_obj.drivername.startswith("sqlite"):
+    db_file = Path(url_obj.database)
+    if db_file.parent and str(db_file.parent) != ".":
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+
+connect_args = {}
+if settings.DATABASE_URL.startswith("sqlite"):
+    connect_args["check_same_thread"] = False
 
 engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    settings.DATABASE_URL,
+    connect_args=connect_args,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
