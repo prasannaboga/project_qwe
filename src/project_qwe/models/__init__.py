@@ -1,3 +1,3 @@
-from project_qwe.models.todo import Todo
+from project_qwe.models.todo import Todo, TodoStatus
 
-__all__ = ["Todo"]
+__all__ = ["Todo", "TodoStatus"]
