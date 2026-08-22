@@ -18,6 +18,11 @@ class Todo(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(
+        String(1000),
+        nullable=True,
+        default=None,
+    )
     status: Mapped[TodoStatus] = mapped_column(
         Enum(
             TodoStatus,
