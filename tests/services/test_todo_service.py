@@ -10,65 +10,106 @@ def test_create_todo_defaults(db_session: Session) -> None:
     todo = todo_service.create_todo(db_session, TodoCreate(title="Test Todo"))
     assert todo.id is not None
     assert todo.title == "Test Todo"
+    assert todo.description is None
     assert todo.status == TodoStatus.CREATED
     assert todo.due_at is None
     assert todo.created_at is not None
     assert todo.updated_at is not None
 
 
+def test_create_todo_with_description(db_session: Session) -> None:
+    todo = todo_service.create_todo(
+        db_session,
+        TodoCreate(
+            title="Task with description",
+            description="Detailed notes for the task",
+        ),
+    )
+    assert todo.id is not None
+    assert todo.title == "Task with description"
+    assert todo.description == "Detailed notes for the task"
+
+
 def test_create_todo_with_status_and_due(db_session: Session) -> None:
     due = datetime(2026, 8, 20, 18, 0, 0, tzinfo=timezone.utc)
     todo = todo_service.create_todo(
         db_session,
-        TodoCreate(title="Test Todo with due", status=TodoStatus.PROCESS, due_at=due),
+        TodoCreate(title="Test Todo with due", status=TodoStatus.INPROGRESS, due_at=due),
     )
     assert todo.id is not None
     assert todo.title == "Test Todo with due"
-    assert todo.status == TodoStatus.PROCESS
+    assert todo.status == TodoStatus.INPROGRESS
     assert todo.due_at is not None
 
 
 def test_get_todos(db_session: Session) -> None:
-    todo_service.create_todo(db_session, TodoCreate(title="Task A"))
+    todo_service.create_todo(db_session, TodoCreate(title="Task A", description="Desc A"))
     todo_service.create_todo(db_session, TodoCreate(title="Task B", status=TodoStatus.COMPLETED))
 
     todos = todo_service.get_todos(db_session)
     assert len(todos) == 2
     assert todos[0].title == "Task A"
+    assert todos[0].description == "Desc A"
     assert todos[0].status == TodoStatus.CREATED
     assert todos[1].title == "Task B"
+    assert todos[1].description is None
     assert todos[1].status == TodoStatus.COMPLETED
 
 
 def test_get_todo_by_id(db_session: Session) -> None:
     created = todo_service.create_todo(
-        db_session, TodoCreate(title="Specific Task", status=TodoStatus.PROCESS)
+        db_session,
+        TodoCreate(title="Specific Task", description="Detailed description", status=TodoStatus.INPROGRESS),
     )
     fetched = todo_service.get_todo_by_id(db_session, created.id)
     assert fetched is not None
     assert fetched.id == created.id
     assert fetched.title == "Specific Task"
-    assert fetched.status == TodoStatus.PROCESS
+    assert fetched.description == "Detailed description"
+    assert fetched.status == TodoStatus.INPROGRESS
 
     not_found = todo_service.get_todo_by_id(db_session, 9999)
     assert not_found is None
 
 
 def test_update_todo(db_session: Session) -> None:
-    created = todo_service.create_todo(db_session, TodoCreate(title="Old Task"))
+    created = todo_service.create_todo(
+        db_session, TodoCreate(title="Old Task", description="Old description")
+    )
     due = datetime(2026, 9, 1, 10, 0, 0, tzinfo=timezone.utc)
     updated = todo_service.update_todo(
         db_session,
         created.id,
-        TodoUpdate(title="New Task", status=TodoStatus.COMPLETED, due_at=due),
+        TodoUpdate(
+            title="New Task",
+            description="New description",
+            status=TodoStatus.COMPLETED,
+            due_at=due,
+        ),
     )
     assert updated is not None
     assert updated.title == "New Task"
+    assert updated.description == "New description"
     assert updated.status == TodoStatus.COMPLETED
     assert updated.due_at is not None
     assert updated.due_at.year == 2026
     assert updated.due_at.month == 9
     assert updated.due_at.day == 1
+
+
+def test_update_todo_clear_description(db_session: Session) -> None:
+    created = todo_service.create_todo(
+        db_session, TodoCreate(title="Task to clear", description="Will be cleared")
+    )
+    assert created.description == "Will be cleared"
+
+    updated = todo_service.update_todo(
+        db_session,
+        created.id,
+        TodoUpdate(description=None),
+    )
+    assert updated is not None
+    assert updated.description is None
 
 
 def test_delete_todo(db_session: Session) -> None:

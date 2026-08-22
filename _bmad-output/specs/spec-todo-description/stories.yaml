@@ -1,0 +1,21 @@
+- id: "1"
+  title: Add description column to Todo model and create Alembic migration
+  description: >-
+    Add the nullable description column to the Todo ORM model and generate and apply
+    a new forward-only Alembic migration revision.
+  spec_checkpoint: false
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Generate migration using `uv run alembic revision --autogenerate -m "add description to todos"`,
+    apply with `uv run alembic upgrade head`, and verify against project conventions.
+
+- id: "2"
+  title: Update schemas, service layer, API routes, and automated test suite
+  description: >-
+    Update Pydantic models with 1000-char max_length validation, update service and API
+    handlers, and implement comprehensive automated tests for CRUD and boundary cases.
+  spec_checkpoint: false
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Follow layered architecture strictly; run `uv run pytest` to ensure all tests pass
+    including backward compatibility with existing tests.

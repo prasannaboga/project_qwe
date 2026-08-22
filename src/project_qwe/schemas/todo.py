@@ -7,6 +7,11 @@ from project_qwe.models.todo import TodoStatus
 
 class TodoBase(BaseModel):
     title: str = Field(..., min_length=1, description="Title of the todo item")
+    description: str | None = Field(
+        default=None,
+        max_length=1000,
+        description="Optional detailed description for the todo item",
+    )
     status: TodoStatus = Field(
         default=TodoStatus.CREATED,
         description="Status of the todo item (created, inprogress, completed)",
@@ -27,6 +32,11 @@ class TodoUpdate(BaseModel):
         min_length=1,
         description="Updated title of the todo item",
     )
+    description: str | None = Field(
+        default=None,
+        max_length=1000,
+        description="Updated description for the todo item",
+    )
     status: TodoStatus | None = Field(
         default=None,
         description="Updated status of the todo item",
@@ -40,6 +50,10 @@ class TodoUpdate(BaseModel):
 class TodoResponse(BaseModel):
     id: int
     title: str
+    description: str | None = Field(
+        default=None,
+        description="Detailed description of the todo item",
+    )
     status: TodoStatus
     due_at: datetime | None
     created_at: datetime
