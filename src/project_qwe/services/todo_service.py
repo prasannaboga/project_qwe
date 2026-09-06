@@ -25,10 +25,59 @@ def create_todo(db: Session, todo_data: TodoCreate) -> Todo:
         raise
 
 
-def get_todos(db: Session) -> Sequence[Todo]:
-    """Retrieve all Todo items ordered by ID."""
-    stmt = select(Todo).order_by(Todo.id)
-    return db.scalars(stmt).all()
+ALLOWED_SORT_FIELDS = {"id", "title", "due_at", "created_at", "updated_at"}
+ALLOWED_SORT_DIRECTIONS = {"asc", "desc"}
+
+
+def get_todos(
+    db: Session,
+    page: int = 1,
+    per_page: int = 20,
+    sort: str = "created_at:desc",
+) -> tuple[Sequence[Todo], bool]:
+    """Retrieve paginated Todo items with deterministic sorting and limit+1 next-page detection.
+
+    Returns a tuple of (items, has_next_page).
+    """
+    if page < 1 or page > 100:
+        raise ValueError("page must be between 1 and 100")
+    if per_page < 1 or per_page > 100:
+        raise ValueError("per_page must be between 1 and 100")
+
+    if ":" not in sort:
+        raise ValueError("Invalid sort format. Expected '<field>:<direction>'")
+
+    field, direction = sort.split(":", 1)
+    field = field.strip().lower()
+    direction = direction.strip().lower()
+
+    if field not in ALLOWED_SORT_FIELDS:
+        raise ValueError(
+            f"Invalid sort field '{field}'. Allowed fields: {sorted(ALLOWED_SORT_FIELDS)}"
+        )
+    if direction not in ALLOWED_SORT_DIRECTIONS:
+        raise ValueError(
+            f"Invalid sort direction '{direction}'. Allowed directions: 'asc', 'desc'"
+        )
+
+    stmt = select(Todo)
+    column_attr = getattr(Todo, field)
+    sort_func = getattr(column_attr, direction)
+
+    if field == "id":
+        stmt = stmt.order_by(sort_func())
+    else:
+        id_sort_func = getattr(Todo.id, direction)
+        stmt = stmt.order_by(sort_func(), id_sort_func())
+
+    offset = (page - 1) * per_page
+    stmt = stmt.offset(offset).limit(per_page + 1)
+
+    results = db.scalars(stmt).all()
+    has_next_page = len(results) > per_page
+    items = results[:per_page]
+
+    return items, has_next_page
 
 
 def get_todo_by_id(db: Session, todo_id: int) -> Todo | None:

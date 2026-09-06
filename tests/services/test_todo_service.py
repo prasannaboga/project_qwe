@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import pytest
 from sqlalchemy.orm import Session
 
 from project_qwe.models.todo import TodoStatus
@@ -46,14 +47,59 @@ def test_get_todos(db_session: Session) -> None:
     todo_service.create_todo(db_session, TodoCreate(title="Task A", description="Desc A"))
     todo_service.create_todo(db_session, TodoCreate(title="Task B", status=TodoStatus.COMPLETED))
 
-    todos = todo_service.get_todos(db_session)
+    todos, has_next_page = todo_service.get_todos(db_session, page=1, per_page=20, sort="created_at:desc")
     assert len(todos) == 2
-    assert todos[0].title == "Task A"
-    assert todos[0].description == "Desc A"
-    assert todos[0].status == TodoStatus.CREATED
-    assert todos[1].title == "Task B"
-    assert todos[1].description is None
-    assert todos[1].status == TodoStatus.COMPLETED
+    assert has_next_page is False
+    assert todos[0].title == "Task B"
+    assert todos[1].title == "Task A"
+
+
+def test_get_todos_pagination_limit_plus_one(db_session: Session) -> None:
+    for i in range(5):
+        todo_service.create_todo(db_session, TodoCreate(title=f"Task {i}"))
+
+    page1, has_next = todo_service.get_todos(db_session, page=1, per_page=3, sort="id:asc")
+    assert len(page1) == 3
+    assert has_next is True
+    assert [t.title for t in page1] == ["Task 0", "Task 1", "Task 2"]
+
+    page2, has_next = todo_service.get_todos(db_session, page=2, per_page=3, sort="id:asc")
+    assert len(page2) == 2
+    assert has_next is False
+    assert [t.title for t in page2] == ["Task 3", "Task 4"]
+
+
+def test_get_todos_sorting_and_tie_breaking(db_session: Session) -> None:
+    due = datetime(2026, 9, 10, 12, 0, 0, tzinfo=timezone.utc)
+    t1 = todo_service.create_todo(db_session, TodoCreate(title="Z Task", due_at=due))
+    t2 = todo_service.create_todo(db_session, TodoCreate(title="A Task", due_at=due))
+
+    # Same due_at, secondary tie breaker on ID ASC
+    todos, _ = todo_service.get_todos(db_session, sort="due_at:asc")
+    assert todos[0].id == t1.id
+    assert todos[1].id == t2.id
+
+    # Secondary tie breaker on ID DESC
+    todos_desc, _ = todo_service.get_todos(db_session, sort="due_at:desc")
+    assert todos_desc[0].id == t2.id
+    assert todos_desc[1].id == t1.id
+
+
+def test_get_todos_invalid_parameters(db_session: Session) -> None:
+    with pytest.raises(ValueError, match="page must be between 1 and 100"):
+        todo_service.get_todos(db_session, page=0)
+
+    with pytest.raises(ValueError, match="per_page must be between 1 and 100"):
+        todo_service.get_todos(db_session, per_page=101)
+
+    with pytest.raises(ValueError, match="Invalid sort format"):
+        todo_service.get_todos(db_session, sort="invalid_format")
+
+    with pytest.raises(ValueError, match="Invalid sort field"):
+        todo_service.get_todos(db_session, sort="nonexistent_field:asc")
+
+    with pytest.raises(ValueError, match="Invalid sort direction"):
+        todo_service.get_todos(db_session, sort="title:sideways")
 
 
 def test_get_todo_by_id(db_session: Session) -> None:

@@ -75,7 +75,12 @@ def test_create_todo_invalid_payload(client: TestClient) -> None:
 def test_get_todos_empty(client: TestClient) -> None:
     response = client.get("/todos")
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == {
+        "items": [],
+        "page": 1,
+        "per_page": 20,
+        "has_next_page": False,
+    }
 
 
 def test_get_todos_populated(client: TestClient) -> None:
@@ -85,14 +90,80 @@ def test_get_todos_populated(client: TestClient) -> None:
     response = client.get("/todos")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
-    assert data[0]["title"] == "Task 1"
-    assert data[0]["description"] == "First task"
-    assert data[0]["status"] == "created"
-    assert data[1]["title"] == "Task 2"
-    assert data[1]["description"] is None
-    assert data[1]["status"] == "inprogress"
-    assert data[1]["due_at"] is not None
+    assert data["page"] == 1
+    assert data["per_page"] == 20
+    assert data["has_next_page"] is False
+    assert len(data["items"]) == 2
+    assert data["items"][0]["title"] == "Task 2"
+    assert data["items"][1]["title"] == "Task 1"
+
+
+def test_get_todos_custom_page_and_limit(client: TestClient) -> None:
+    for i in range(10):
+        client.post("/todos", json={"title": f"Task {i:02d}"})
+
+    response = client.get("/todos?page=2&per_page=3&sort=id:asc")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["page"] == 2
+    assert data["per_page"] == 3
+    assert data["has_next_page"] is True
+    assert len(data["items"]) == 3
+    assert [item["title"] for item in data["items"]] == ["Task 03", "Task 04", "Task 05"]
+
+
+def test_get_todos_valid_custom_sort_and_case_insensitivity(client: TestClient) -> None:
+    client.post("/todos", json={"title": "Beta Task", "due_at": "2026-09-02T10:00:00Z"})
+    client.post("/todos", json={"title": "Alpha Task", "due_at": "2026-09-01T10:00:00Z"})
+
+    response = client.get("/todos?sort=DUE_AT:ASC")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["items"][0]["title"] == "Alpha Task"
+    assert data["items"][1]["title"] == "Beta Task"
+
+
+def test_get_todos_has_next_page_boundary(client: TestClient) -> None:
+    for i in range(5):
+        client.post("/todos", json={"title": f"Item {i}"})
+
+    # Page 1 of 2 items -> has_next_page is True
+    res1 = client.get("/todos?page=1&per_page=2")
+    assert res1.status_code == 200
+    assert res1.json()["has_next_page"] is True
+    assert len(res1.json()["items"]) == 2
+
+    # Page 3 of 2 items (last page with 1 item) -> has_next_page is False
+    res3 = client.get("/todos?page=3&per_page=2")
+    assert res3.status_code == 200
+    assert res3.json()["has_next_page"] is False
+    assert len(res3.json()["items"]) == 1
+
+
+def test_get_todos_invalid_sort_field_422(client: TestClient) -> None:
+    response = client.get("/todos?sort=secret_column:asc")
+    assert response.status_code == 422
+
+
+def test_get_todos_invalid_sort_direction_422(client: TestClient) -> None:
+    response = client.get("/todos?sort=due_at:sideways")
+    assert response.status_code == 422
+
+
+def test_get_todos_page_bounds_422(client: TestClient) -> None:
+    res_min = client.get("/todos?page=0")
+    assert res_min.status_code == 422
+
+    res_max = client.get("/todos?page=101")
+    assert res_max.status_code == 422
+
+
+def test_get_todos_per_page_bounds_422(client: TestClient) -> None:
+    res_min = client.get("/todos?per_page=0")
+    assert res_min.status_code == 422
+
+    res_max = client.get("/todos?per_page=101")
+    assert res_max.status_code == 422
 
 
 def test_get_todo_by_id_success(client: TestClient) -> None:
