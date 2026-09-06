@@ -1,0 +1,31 @@
+- id: "1"
+  title: Add database indexes for pagination and sorting
+  description: >-
+    Add single-column B-tree index definitions for created_at, updated_at, due_at, title, and status to the Todo ORM model and generate a new Alembic migration.
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    Follow Alembic convention: generate a new migration revision without modifying any existing migrations. Run uv run alembic upgrade head to apply.
+
+- id: "2"
+  title: Define pagination schemas and query validation models
+  description: >-
+    Create Pydantic schema TodoPaginationResponse containing items, page, per_page, and has_next_page, plus validation rules for sort allowlist and limit caps.
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    Ensure response schema uses ConfigDict(from_attributes=True) and strict field boundaries (page 1-100, per_page 1-100).
+
+- id: "3"
+  title: Implement limit+1 pagination and deterministic sorting in service layer
+  description: >-
+    Update todo_service.py with sort parser, allowlist validation, deterministic secondary ID tie-breaking, and limit+1 fetching without COUNT(*).
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    Keep all query construction and pagination logic inside services/todo_service.py. Router handlers must remain thin delegates.
+
+- id: "4"
+  title: Wire API route and write comprehensive automated test suite
+  description: >-
+    Update GET /todos route in api/todos.py to accept page, per_page, and sort parameters and add end-to-end tests validating limits, 422 errors, and ordering.
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    Verify all existing and new test cases pass with uv run pytest with 100% pass rate.
