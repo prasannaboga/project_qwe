@@ -60,3 +60,13 @@ class TodoResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TodoPaginationResponse(BaseModel):
+    items: list[TodoResponse]
+    page: int = Field(..., description="Current page number")
+    per_page: int = Field(..., description="Number of items per page")
+    has_next_page: bool = Field(..., description="Whether there is a subsequent page")
+
+    model_config = ConfigDict(from_attributes=True)
+

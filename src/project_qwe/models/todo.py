@@ -17,7 +17,7 @@ class Todo(Base):
     __tablename__ = "todos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    title: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(
         String(1000),
         nullable=True,
@@ -33,17 +33,20 @@ class Todo(Base):
         ),
         default=TodoStatus.CREATED,
         nullable=False,
+        index=True,
     )
     due_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         default=None,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
         nullable=False,
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -51,4 +54,5 @@ class Todo(Base):
         server_default=func.now(),
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
+        index=True,
     )

@@ -1,19 +1,42 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from project_qwe.config.database import get_db
-from project_qwe.schemas.todo import TodoCreate, TodoResponse, TodoUpdate
+from project_qwe.schemas.todo import (
+    TodoCreate,
+    TodoPaginationResponse,
+    TodoResponse,
+    TodoUpdate,
+)
 from project_qwe.services import todo_service
 
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 
-@router.get("", response_model=list[TodoResponse])
-@router.get("/", response_model=list[TodoResponse], include_in_schema=False)
-def get_todos(db: Session = Depends(get_db)) -> list[TodoResponse]:
-    """Retrieve all todos."""
-    todos = todo_service.get_todos(db)
-    return [TodoResponse.model_validate(todo) for todo in todos]
+@router.get("", response_model=TodoPaginationResponse)
+@router.get("/", response_model=TodoPaginationResponse, include_in_schema=False)
+def get_todos(
+    page: int = Query(1, ge=1, le=100, description="Page number (1-100)"),
+    per_page: int = Query(20, ge=1, le=100, description="Items per page (1-100)"),
+    sort: str = Query("created_at:desc", description="Sort format '<field>:<direction>'"),
+    db: Session = Depends(get_db),
+) -> TodoPaginationResponse:
+    """Retrieve paginated todos."""
+    try:
+        todos, has_next_page = todo_service.get_todos(
+            db, page=page, per_page=per_page, sort=sort
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+    return TodoPaginationResponse(
+        items=[TodoResponse.model_validate(todo) for todo in todos],
+        page=page,
+        per_page=per_page,
+        has_next_page=has_next_page,
+    )
 
 
 @router.get("/{todo_id}", response_model=TodoResponse)
