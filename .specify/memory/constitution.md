@@ -1,50 +1,176 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+SYNC IMPACT REPORT
+==================
+Version change: (unversioned template) → 1.0.0
+Added sections:
+  - Core Principles (I–VII): First real project constitution; all placeholders replaced
+  - Technology Stack: Runtime constraints and approved library declarations
+  - Development Workflow: Quality gates and code-review requirements
+  - Governance: Amendment procedure, versioning policy, compliance review
+Modified principles: N/A (initial adoption from blank template)
+Removed sections: None
+Follow-up TODOs: None — all placeholders resolved from project context and user input.
+-->
+
+# project_qwe Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Python 3.14 with uv Dependency Management
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+All application code MUST target Python 3.14 exclusively (as pinned in `requires-python = ">=3.14,<3.15"`).
+Dependencies MUST be declared in `pyproject.toml` and locked via `uv.lock`. No direct `pip install`
+or requirements files are permitted. The `uv` toolchain is the sole mechanism for adding,
+updating, and resolving packages. Version bounds MUST follow the `add-bounds = "minor"` policy
+already configured in `[tool.uv]`.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+**Rationale**: Pinning to a single minor version prevents runtime surprises caused by language
+version drift. `uv` guarantees reproducible installs and is the project's sanctioned package
+manager — bypassing it undermines the lock file and CI reproducibility guarantees.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. Layered FastAPI / SQLAlchemy Architecture
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+The codebase MUST maintain strict layer separation:
+- **Routes** (`src/project_qwe/api/`): HTTP boundary only — parse requests, delegate to services,
+  serialize responses. Business logic MUST NOT appear here.
+- **Services** (`src/project_qwe/services/`): All domain operations and business rules live here.
+  Services MUST be the sole callers of ORM models for data access.
+- **Models** (`src/project_qwe/models/`): SQLAlchemy ORM definitions. Database sessions MUST NOT
+  be instantiated inside models; sessions are injected from `src/project_qwe/config/database.py`.
+- **Schemas** (`src/project_qwe/schemas/`): Pydantic request/response contracts. Models and schemas
+  MUST NOT be mixed.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+**Rationale**: Enforcing layer boundaries keeps business logic testable in isolation and prevents
+route handlers from accumulating hidden complexity that is difficult to test or reason about.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Test Coverage with pytest (NON-NEGOTIABLE)
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Every feature, bug fix, and refactor MUST include automated tests executed via `uv run pytest`.
+- Unit tests MUST cover service-layer logic independently of HTTP and the database.
+- Integration tests MUST cover at least the happy path and primary error paths of each API
+  endpoint.
+- Tests MUST pass before any code is merged. CI MUST be red until tests are green.
+- Test files live under `tests/` and MUST mirror the `src/project_qwe/` package structure.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+**Rationale**: pytest is the project's test runner; no alternative frameworks are introduced.
+Without mandatory coverage requirements, regressions accumulate silently. Service-layer unit
+tests provide the fastest feedback loop and guard the architectural boundary in Principle II.
+
+### IV. Database Migration Integrity with Alembic
+
+All schema changes MUST be expressed as new Alembic migration revisions in `migrations/versions/`.
+- Existing applied migrations MUST NEVER be modified — create a new revision for every change.
+- Migrations MUST be autogenerated from model changes with
+  `uv run alembic revision --autogenerate -m "<message>"` and reviewed before commit.
+- The database head MUST be applied with `uv run alembic upgrade head` before running the
+  application or integration tests.
+- Destructive migrations (column drops, table drops) MUST include a downgrade path where feasible
+  and a written risk note in the migration's docstring.
+
+**Rationale**: Immutable migration history guarantees that any environment — local, staging,
+production — can be reproduced deterministically. Mutating applied migrations causes silent
+divergence that is expensive to diagnose and fix.
+
+### V. Backward-Compatible API Changes
+
+All changes to existing API endpoints MUST be backward-compatible by default:
+- Adding optional request fields or new response fields is permitted without a version bump.
+- Removing or renaming fields, changing field types, or altering HTTP status semantics constitutes
+  a breaking change and MUST be introduced under a new versioned route prefix (e.g. `/v2/`).
+- Deprecated endpoints MUST remain functional for at least one release cycle and MUST emit a
+  deprecation notice in the response headers or documentation.
+- Pydantic schemas enforce the contract; any schema change that would fail existing serialization
+  round-trips is a breaking change.
+
+**Rationale**: Clients depending on the API MUST not be broken by server-side updates. Explicit
+versioning provides a migration path while keeping the old contract stable.
+
+### VI. Maintainable, Readable Code
+
+All code MUST prioritize readability and long-term maintainability:
+- Functions and methods MUST have a single, clear responsibility (Single Responsibility Principle).
+- All public functions, classes, and modules MUST have docstrings explaining purpose, parameters,
+  and return values.
+- Magic numbers and inline hard-coded values MUST be extracted to named constants or configuration.
+- Configuration MUST be managed via `pydantic-settings` (`src/project_qwe/config/`) and sourced
+  from environment variables or `.env` files — never hard-coded in source.
+- Code complexity (cyclomatic or cognitive) that cannot be justified by a comment MUST be
+  refactored.
+
+**Rationale**: Maintainability is a first-class property. Code that is hard to read is hard to
+test, review, and change safely. Given the team's focus on Python learnings, clarity over
+cleverness is mandatory.
+
+### VII. Configuration and Secret Hygiene
+
+Secrets, credentials, and environment-specific values MUST NEVER be committed to version control:
+- `.env` files MUST be listed in `.gitignore` (already enforced).
+- `.env.example` MUST be kept current and document every required variable with a safe placeholder.
+- `pydantic-settings` MUST be the only mechanism for loading application configuration at runtime.
+- Database connection strings, API keys, and JWT secrets are secrets; they MUST be injected via
+  environment variables, never imported from source modules.
+
+**Rationale**: Leaking secrets through version control is an irreversible security incident.
+`.env.example` ensures new contributors can onboard without guessing required variables.
+
+## Technology Stack
+
+The following technologies are approved and constitute the sanctioned stack. Introducing a new
+library or framework MUST be discussed and added to this section before use in production code.
+
+| Layer | Technology | Pinned Version |
+|---|---|---|
+| Language | Python | 3.14.x |
+| Package manager | uv | latest compatible |
+| Web framework | FastAPI | 0.141.x |
+| ORM | SQLAlchemy | 2.0.x |
+| Migrations | Alembic | 1.19.x |
+| Settings | pydantic-settings | 2.15.x |
+| Env loading | python-dotenv | 1.2.x |
+| Test runner | pytest | 8.3.x |
+| HTTP test client | httpx | 0.28.x |
+| Build backend | uv_build | 0.12.x |
+
+Any dependency not in this table requires a constitution amendment (see Governance).
+
+## Development Workflow
+
+All development MUST follow this quality gate sequence before merging:
+
+1. **Implement in the correct layer** — routes, services, models, schemas (Principle II).
+2. **Write tests first or alongside** — at minimum covering the happy path and primary error paths
+   (Principle III).
+3. **Run `uv run pytest`** — all tests MUST pass locally before opening a pull request.
+4. **Generate and review migrations** — any model changes MUST be accompanied by a reviewed
+   autogenerated migration (Principle IV).
+5. **Apply migrations** — `uv run alembic upgrade head` MUST succeed before integration tests run.
+6. **Check API compatibility** — any route or schema change MUST be assessed against Principle V.
+7. **Peer review** — at least one reviewer MUST verify layer-boundary compliance and test coverage.
+
+Development server: `uv run uvicorn project_qwe.main:app --reload`
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other project conventions, ad-hoc practices, and informal
+agreements. Where this document conflicts with any other guidance, this document takes precedence.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Amendment procedure**:
+1. Propose the change in a pull request modifying `.specify/memory/constitution.md`.
+2. State the rationale and version bump type (MAJOR / MINOR / PATCH — see versioning policy below).
+3. Obtain at least one approving review from a project maintainer.
+4. Update `LAST_AMENDED_DATE` and `CONSTITUTION_VERSION` in the document.
+5. Merge. The new constitution takes effect immediately upon merge.
+
+**Versioning policy** (semantic):
+- **MAJOR**: Backward-incompatible changes — removal or redefinition of an existing principle,
+  removal of a required technology, or architectural constraint relaxation.
+- **MINOR**: New principle added, new technology approved, or material expansion of existing
+  guidance.
+- **PATCH**: Wording clarifications, typo fixes, formatting, or non-semantic refinements.
+
+**Compliance review**: Every pull request reviewer MUST verify compliance with Principles I–VII.
+Non-compliant code MUST NOT be merged regardless of functional correctness.
+
+All PRs and code reviews use `.specify/memory/constitution.md` as the authoritative reference.
+
+**Version**: 1.0.0 | **Ratified**: 2026-09-10 | **Last Amended**: 2026-09-10
