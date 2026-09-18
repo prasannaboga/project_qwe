@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from project_qwe.config.database import get_db
+from project_qwe.models.todo import TodoPriority
 from project_qwe.schemas.todo import (
     TodoCreate,
     TodoPaginationResponse,
@@ -19,12 +20,15 @@ def get_todos(
     page: int = Query(1, ge=1, le=100, description="Page number (1-100)"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page (1-100)"),
     sort: str = Query("created_at:desc", description="Sort format '<field>:<direction>'"),
+    priority: TodoPriority | None = Query(
+        None, description="Filter by priority level (urgent, high, medium, low)"
+    ),
     db: Session = Depends(get_db),
 ) -> TodoPaginationResponse:
-    """Retrieve paginated todos."""
+    """Retrieve paginated todos, optionally filtered by priority."""
     try:
         todos, has_next_page = todo_service.get_todos(
-            db, page=page, per_page=per_page, sort=sort
+            db, page=page, per_page=per_page, sort=sort, priority=priority
         )
     except ValueError as exc:
         raise HTTPException(

@@ -168,3 +168,58 @@ def test_delete_todo(db_session: Session) -> None:
 
     not_found = todo_service.delete_todo(db_session, 9999)
     assert not_found is False
+
+
+def test_update_todo_priority(db_session: Session) -> None:
+    from project_qwe.models.todo import TodoPriority
+    created = todo_service.create_todo(
+        db_session, TodoCreate(title="Priority task", priority=TodoPriority.LOW)
+    )
+    assert created.priority == TodoPriority.LOW
+
+    updated = todo_service.update_todo(
+        db_session, created.id, TodoUpdate(priority=TodoPriority.URGENT)
+    )
+    assert updated is not None
+    assert updated.priority == TodoPriority.URGENT
+    assert updated.title == "Priority task"
+
+
+def test_update_todo_priority_none_preserves_existing(db_session: Session) -> None:
+    from project_qwe.models.todo import TodoPriority
+    created = todo_service.create_todo(
+        db_session, TodoCreate(title="Priority preserve task", priority=TodoPriority.HIGH)
+    )
+    assert created.priority == TodoPriority.HIGH
+
+    updated = todo_service.update_todo(
+        db_session, created.id, TodoUpdate(title="Updated title only", priority=None)
+    )
+    assert updated is not None
+    assert updated.priority == TodoPriority.HIGH
+    assert updated.title == "Updated title only"
+
+
+def test_get_todos_filtered_by_priority(db_session: Session) -> None:
+    from project_qwe.models.todo import TodoPriority
+    todo_service.create_todo(db_session, TodoCreate(title="Urgent 1", priority=TodoPriority.URGENT))
+    todo_service.create_todo(db_session, TodoCreate(title="High 1", priority=TodoPriority.HIGH))
+    todo_service.create_todo(db_session, TodoCreate(title="Low 1", priority=TodoPriority.LOW))
+
+    urgent_todos, has_next = todo_service.get_todos(db_session, priority=TodoPriority.URGENT)
+    assert len(urgent_todos) == 1
+    assert urgent_todos[0].title == "Urgent 1"
+    assert urgent_todos[0].priority == TodoPriority.URGENT
+    assert has_next is False
+
+
+def test_get_todos_priority_none_returns_all(db_session: Session) -> None:
+    from project_qwe.models.todo import TodoPriority
+    todo_service.create_todo(db_session, TodoCreate(title="Urgent 1", priority=TodoPriority.URGENT))
+    todo_service.create_todo(db_session, TodoCreate(title="High 1", priority=TodoPriority.HIGH))
+    todo_service.create_todo(db_session, TodoCreate(title="Low 1", priority=TodoPriority.LOW))
+
+    all_todos, _ = todo_service.get_todos(db_session, priority=None)
+    assert len(all_todos) == 3
+
+

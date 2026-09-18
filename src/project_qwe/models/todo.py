@@ -7,6 +7,22 @@ from sqlalchemy.orm import Mapped, mapped_column
 from project_qwe.config.database import Base
 
 
+class TodoPriority(str, enum.Enum):
+    """Priority level for a Todo item.
+
+    Levels ordered from highest to lowest urgency:
+    - urgent: Requires immediate attention; blockers or time-critical tasks.
+    - high:   Important work to be addressed in the current work period.
+    - medium: Standard work with no exceptional urgency (default).
+    - low:    Nice-to-have or background work that can be deferred.
+    """
+
+    URGENT = "urgent"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
 class TodoStatus(str, enum.Enum):
     CREATED = "created"
     INPROGRESS = "inprogress"
@@ -32,6 +48,19 @@ class Todo(Base):
             name="todostatus",
         ),
         default=TodoStatus.CREATED,
+        nullable=False,
+        index=True,
+    )
+    priority: Mapped[TodoPriority] = mapped_column(
+        Enum(
+            TodoPriority,
+            values_callable=lambda x: [e.value for e in x],
+            native_enum=False,
+            create_constraint=True,
+            name="todopriority",
+        ),
+        default=TodoPriority.MEDIUM,
+        server_default=TodoPriority.MEDIUM.value,
         nullable=False,
         index=True,
     )
