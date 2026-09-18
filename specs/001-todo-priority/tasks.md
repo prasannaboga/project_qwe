@@ -9,8 +9,8 @@
 
 **Purpose**: Confirm the existing project is in a runnable state and establish the development baseline for this feature.
 
-- [ ] T001 Verify existing test suite passes with `uv run pytest` before any changes are made
-- [ ] T002 Verify development server starts with `uv run uvicorn project_qwe.main:app --reload` before any changes are made
+- [X] T001 Verify existing test suite passes with `uv run pytest` before any changes are made
+- [X] T002 Verify development server starts with `uv run uvicorn project_qwe.main:app --reload` before any changes are made
 
 ---
 
@@ -20,10 +20,10 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T003 Add `TodoPriority` str-enum (`urgent`, `high`, `medium`, `low`) to `src/project_qwe/models/todo.py` using `native_enum=False, create_constraint=True` — identical pattern to existing `TodoStatus`; include module-level docstring on the enum
-- [ ] T004 Add `priority` mapped column to the `Todo` ORM class in `src/project_qwe/models/todo.py` — `NOT NULL`, `default=TodoPriority.MEDIUM`, same `Enum(...)` kwargs as `TodoStatus`, with a database-level `CHECK CONSTRAINT` restricting values to `('urgent', 'high', 'medium', 'low')`
-- [ ] T005 Generate Alembic migration with `uv run alembic revision --autogenerate -m "add priority to todos"` and review the generated file in `migrations/versions/`; verify: column is `VARCHAR NOT NULL`, `server_default='medium'`, `CHECK CONSTRAINT` present, and a downgrade path that drops the column is included
-- [ ] T006 Apply migration with `uv run alembic upgrade head` and confirm it runs without errors
+- [X] T003 Add `TodoPriority` str-enum (`urgent`, `high`, `medium`, `low`) to `src/project_qwe/models/todo.py` using `native_enum=False, create_constraint=True` — identical pattern to existing `TodoStatus`; include module-level docstring on the enum
+- [X] T004 Add `priority` mapped column to the `Todo` ORM class in `src/project_qwe/models/todo.py` — `NOT NULL`, `default=TodoPriority.MEDIUM`, same `Enum(...)` kwargs as `TodoStatus`, with a database-level `CHECK CONSTRAINT` restricting values to `('urgent', 'high', 'medium', 'low')`
+- [X] T005 Generate Alembic migration with `uv run alembic revision --autogenerate -m "add priority to todos"` and review the generated file in `migrations/versions/`; verify: column is `VARCHAR NOT NULL`, `server_default='medium'`, `CHECK CONSTRAINT` present, and a downgrade path that drops the column is included
+- [X] T006 Apply migration with `uv run alembic upgrade head` and confirm it runs without errors
 
 **Checkpoint**: `TodoPriority` enum exists in the model, migration is applied, and `uv run pytest` still passes (existing tests should be unaffected).
 
@@ -39,11 +39,11 @@
 
 ### Implementation for User Story 4
 
-- [ ] T007 [US4] Add `priority: TodoPriority` field with `default=TodoPriority.MEDIUM` to `TodoBase` in `src/project_qwe/schemas/todo.py`; import `TodoPriority` from `project_qwe.models.todo`
-- [ ] T008 [US4] Add `priority: TodoPriority` field to `TodoResponse` in `src/project_qwe/schemas/todo.py` so it is always serialised in responses; ensure `model_config = ConfigDict(from_attributes=True)` remains intact
-- [ ] T009 [US4] Add integration test asserting `GET /todos/{id}` response includes `"priority"` with a valid `TodoPriority` value in `tests/api/test_todos.py`
-- [ ] T010 [US4] Add integration test asserting every item in `GET /todos` list response includes the `"priority"` field in `tests/api/test_todos.py`
-- [ ] T011 [US4] Run `uv run pytest` — all tests must pass
+- [X] T007 [US4] Add `priority: TodoPriority` field with `default=TodoPriority.MEDIUM` to `TodoBase` in `src/project_qwe/schemas/todo.py`; import `TodoPriority` from `project_qwe.models.todo`
+- [X] T008 [US4] Add `priority: TodoPriority` field to `TodoResponse` in `src/project_qwe/schemas/todo.py` so it is always serialised in responses; ensure `model_config = ConfigDict(from_attributes=True)` remains intact
+- [X] T009 [US4] Add integration test asserting `GET /todos/{id}` response includes `"priority"` with a valid `TodoPriority` value in `tests/api/test_todos.py`
+- [X] T010 [US4] Add integration test asserting every item in `GET /todos` list response includes the `"priority"` field in `tests/api/test_todos.py`
+- [X] T011 [US4] Run `uv run pytest` — all tests must pass
 
 **Checkpoint**: `priority` is visible in all Todo responses; `GET /todos` and `GET /todos/{id}` both return the field. US4 is independently verifiable.
 
@@ -57,16 +57,16 @@
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Confirm `TodoCreate` inherits `priority` from `TodoBase` (added in T007) in `src/project_qwe/schemas/todo.py` — no additional code needed; add a comment to `TodoCreate` confirming the inheritance
-- [ ] T013 [US1] Update `create_todo()` in `src/project_qwe/services/todo_service.py` to pass `todo_data.priority` (or `TodoPriority.MEDIUM` if falsy) to the `Todo(...)` constructor
-- [ ] T014 [P] [US1] Add integration test: `POST /todos` with `priority="urgent"` → `201`, response `priority == "urgent"` in `tests/api/test_todos.py`
-- [ ] T015 [P] [US1] Add integration test: `POST /todos` with `priority="high"` → `201`, response `priority == "high"` in `tests/api/test_todos.py`
-- [ ] T016 [P] [US1] Add integration test: `POST /todos` with `priority="medium"` → `201`, response `priority == "medium"` in `tests/api/test_todos.py`
-- [ ] T017 [P] [US1] Add integration test: `POST /todos` with `priority="low"` → `201`, response `priority == "low"` in `tests/api/test_todos.py`
-- [ ] T018 [US1] Add integration test: `POST /todos` with no `priority` field → `201`, response `priority == "medium"` (default) in `tests/api/test_todos.py`
-- [ ] T019 [US1] Add integration test: `POST /todos` with `priority="critical"` → `422`, error message contains all four valid values in `tests/api/test_todos.py`
-- [ ] T020 [US1] Add integration test: `POST /todos` with `priority="URGENT"` (wrong casing) → `422` in `tests/api/test_todos.py`
-- [ ] T021 [US1] Run `uv run pytest` — all tests must pass
+- [X] T012 [US1] Confirm `TodoCreate` inherits `priority` from `TodoBase` (added in T007) in `src/project_qwe/schemas/todo.py` — no additional code needed; add a comment to `TodoCreate` confirming the inheritance
+- [X] T013 [US1] Update `create_todo()` in `src/project_qwe/services/todo_service.py` to pass `todo_data.priority` (or `TodoPriority.MEDIUM` if falsy) to the `Todo(...)` constructor
+- [X] T014 [P] [US1] Add integration test: `POST /todos` with `priority="urgent"` → `201`, response `priority == "urgent"` in `tests/api/test_todos.py`
+- [X] T015 [P] [US1] Add integration test: `POST /todos` with `priority="high"` → `201`, response `priority == "high"` in `tests/api/test_todos.py`
+- [X] T016 [P] [US1] Add integration test: `POST /todos` with `priority="medium"` → `201`, response `priority == "medium"` in `tests/api/test_todos.py`
+- [X] T017 [P] [US1] Add integration test: `POST /todos` with `priority="low"` → `201`, response `priority == "low"` in `tests/api/test_todos.py`
+- [X] T018 [US1] Add integration test: `POST /todos` with no `priority` field → `201`, response `priority == "medium"` (default) in `tests/api/test_todos.py`
+- [X] T019 [US1] Add integration test: `POST /todos` with `priority="critical"` → `422`, error message contains all four valid values in `tests/api/test_todos.py`
+- [X] T020 [US1] Add integration test: `POST /todos` with `priority="URGENT"` (wrong casing) → `422` in `tests/api/test_todos.py`
+- [X] T021 [US1] Run `uv run pytest` — all tests must pass
 
 **Checkpoint**: Creating Todos with explicit or omitted priority works correctly; invalid values are rejected. US1 is independently verifiable.
 
@@ -80,13 +80,13 @@
 
 ### Implementation for User Story 2
 
-- [ ] T022 [US2] Add `priority: TodoPriority | None = Field(default=None, ...)` to `TodoUpdate` in `src/project_qwe/schemas/todo.py`; include a docstring note: "When None, the existing priority is preserved unchanged"
-- [ ] T023 [US2] Update `update_todo()` in `src/project_qwe/services/todo_service.py`: add a `priority` branch — `if todo_data.priority is not None: todo.priority = todo_data.priority`; must not touch other fields
-- [ ] T024 [US2] Add integration test: create Todo with `priority="low"`, update to `priority="urgent"` → `200`, `priority == "urgent"`, `title` and `status` unchanged in `tests/api/test_todos.py`
-- [ ] T025 [US2] Add integration test: update Todo with `priority="important"` → `422`, original priority unchanged in `tests/api/test_todos.py`
-- [ ] T026 [US2] Add integration test: `PUT /todos/{id}` with only `{"title": "New title"}` (no `priority`) → `200`, `priority` unchanged in `tests/api/test_todos.py`
-- [ ] T027 [US2] Add unit test for `update_todo()` in `tests/services/test_todo_service.py`: assert that when `TodoUpdate(priority=None)` is passed the existing priority is not mutated
-- [ ] T028 [US2] Run `uv run pytest` — all tests must pass
+- [X] T022 [US2] Add `priority: TodoPriority | None = Field(default=None, ...)` to `TodoUpdate` in `src/project_qwe/schemas/todo.py`; include a docstring note: "When None, the existing priority is preserved unchanged"
+- [X] T023 [US2] Update `update_todo()` in `src/project_qwe/services/todo_service.py`: add a `priority` branch — `if todo_data.priority is not None: todo.priority = todo_data.priority`; must not touch other fields
+- [X] T024 [US2] Add integration test: create Todo with `priority="low"`, update to `priority="urgent"` → `200`, `priority == "urgent"`, `title` and `status` unchanged in `tests/api/test_todos.py`
+- [X] T025 [US2] Add integration test: update Todo with `priority="important"` → `422`, original priority unchanged in `tests/api/test_todos.py`
+- [X] T026 [US2] Add integration test: `PUT /todos/{id}` with only `{"title": "New title"}` (no `priority`) → `200`, `priority` unchanged in `tests/api/test_todos.py`
+- [X] T027 [US2] Add unit test for `update_todo()` in `tests/services/test_todo_service.py`: assert that when `TodoUpdate(priority=None)` is passed the existing priority is not mutated
+- [X] T028 [US2] Run `uv run pytest` — all tests must pass
 
 **Checkpoint**: Priority updates work correctly; non-priority fields are unaffected; invalid values rejected. US2 is independently verifiable alongside US1.
 
@@ -100,15 +100,15 @@
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Add optional `priority: TodoPriority | None = Query(default=None, ...)` parameter to `get_todos()` route in `src/project_qwe/api/todos.py`; pass it through to the service
-- [ ] T030 [US3] Update `get_todos()` in `src/project_qwe/services/todo_service.py`: add an optional `priority: TodoPriority | None = None` parameter; when not `None`, append `.where(Todo.priority == priority)` to the SQLAlchemy `select` statement before applying pagination and sorting
-- [ ] T031 [US3] Update `ALLOWED_SORT_FIELDS` comment in `src/project_qwe/services/todo_service.py` to note that `priority` is not a sort field (filtering only) to prevent future confusion
-- [ ] T032 [US3] Add unit test for `get_todos(db, priority=TodoPriority.URGENT)` in `tests/services/test_todo_service.py`: seed 3 Todos (`urgent`, `high`, `low`), assert only `urgent` is returned
-- [ ] T033 [US3] Add unit test for `get_todos(db, priority=None)` in `tests/services/test_todo_service.py`: assert all Todos are returned unchanged (backward compat)
-- [ ] T034 [US3] Add integration test: `GET /todos?priority=urgent` returns only `urgent` items; zero-result when none seeded in `tests/api/test_todos.py`
-- [ ] T035 [US3] Add integration test: `GET /todos?priority=invalid` → `422` in `tests/api/test_todos.py`
-- [ ] T036 [US3] Add integration test: `GET /todos` (no filter) returns all Todos — existing list behaviour preserved in `tests/api/test_todos.py`
-- [ ] T037 [US3] Run `uv run pytest` — all tests must pass
+- [X] T029 [US3] Add optional `priority: TodoPriority | None = Query(default=None, ...)` parameter to `get_todos()` route in `src/project_qwe/api/todos.py`; pass it through to the service
+- [X] T030 [US3] Update `get_todos()` in `src/project_qwe/services/todo_service.py`: add an optional `priority: TodoPriority | None = None` parameter; when not `None`, append `.where(Todo.priority == priority)` to the SQLAlchemy `select` statement before applying pagination and sorting
+- [X] T031 [US3] Update `ALLOWED_SORT_FIELDS` comment in `src/project_qwe/services/todo_service.py` to note that `priority` is not a sort field (filtering only) to prevent future confusion
+- [X] T032 [US3] Add unit test for `get_todos(db, priority=TodoPriority.URGENT)` in `tests/services/test_todo_service.py`: seed 3 Todos (`urgent`, `high`, `low`), assert only `urgent` is returned
+- [X] T033 [US3] Add unit test for `get_todos(db, priority=None)` in `tests/services/test_todo_service.py`: assert all Todos are returned unchanged (backward compat)
+- [X] T034 [US3] Add integration test: `GET /todos?priority=urgent` returns only `urgent` items; zero-result when none seeded in `tests/api/test_todos.py`
+- [X] T035 [US3] Add integration test: `GET /todos?priority=invalid` → `422` in `tests/api/test_todos.py`
+- [X] T036 [US3] Add integration test: `GET /todos` (no filter) returns all Todos — existing list behaviour preserved in `tests/api/test_todos.py`
+- [X] T037 [US3] Run `uv run pytest` — all tests must pass
 
 **Checkpoint**: Priority-filtered list works; full-list behaviour unchanged. US3 is independently verifiable.
 
@@ -118,12 +118,12 @@
 
 **Purpose**: Complete validation, documentation, and housekeeping across all stories.
 
-- [ ] T038 [P] Add docstrings to all new and modified public functions in `src/project_qwe/services/todo_service.py` (`create_todo`, `get_todos`, `update_todo`) per Constitution Principle VI
-- [ ] T039 [P] Add docstrings to all new and modified public classes and fields in `src/project_qwe/schemas/todo.py` (`TodoBase`, `TodoUpdate`, `TodoResponse`) per Constitution Principle VI
-- [ ] T040 [P] Add a docstring to `TodoPriority` enum in `src/project_qwe/models/todo.py` explaining the four levels and their semantics
-- [ ] T041 Run the full quickstart validation guide at [`quickstart.md`](quickstart.md) end-to-end against the running development server to confirm all 10 scenarios pass
-- [ ] T042 Run `uv run alembic downgrade -1` and confirm the migration rolls back cleanly; then re-apply with `uv run alembic upgrade head`
-- [ ] T043 Run `uv run pytest` one final time across the entire test suite — zero failures, zero errors required
+- [X] T038 [P] Add docstrings to all new and modified public functions in `src/project_qwe/services/todo_service.py` (`create_todo`, `get_todos`, `update_todo`) per Constitution Principle VI
+- [X] T039 [P] Add docstrings to all new and modified public classes and fields in `src/project_qwe/schemas/todo.py` (`TodoBase`, `TodoUpdate`, `TodoResponse`) per Constitution Principle VI
+- [X] T040 [P] Add a docstring to `TodoPriority` enum in `src/project_qwe/models/todo.py` explaining the four levels and their semantics
+- [X] T041 Run the full quickstart validation guide at [`quickstart.md`](quickstart.md) end-to-end against the running development server to confirm all 10 scenarios pass
+- [X] T042 Run `uv run alembic downgrade -1` and confirm the migration rolls back cleanly; then re-apply with `uv run alembic upgrade head`
+- [X] T043 Run `uv run pytest` one final time across the entire test suite — zero failures, zero errors required
 
 ---
 

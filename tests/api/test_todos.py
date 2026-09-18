@@ -271,3 +271,152 @@ def test_delete_todo_not_found(client: TestClient) -> None:
     assert response.status_code == 404
     assert response.json()["detail"] == "Todo with id 9999 not found"
 
+
+def test_get_todo_by_id_includes_priority(client: TestClient) -> None:
+    created = client.post("/todos", json={"title": "Test US4 Todo"}).json()
+    todo_id = created["id"]
+
+    response = client.get(f"/todos/{todo_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert "priority" in data
+    assert data["priority"] in ["urgent", "high", "medium", "low"]
+    assert data["priority"] == "medium"
+
+
+def test_get_todos_list_includes_priority(client: TestClient) -> None:
+    client.post("/todos", json={"title": "List Todo 1"})
+    client.post("/todos", json={"title": "List Todo 2"})
+
+    response = client.get("/todos")
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) >= 2
+    for item in items:
+        assert "priority" in item
+        assert item["priority"] in ["urgent", "high", "medium", "low"]
+
+
+def test_create_todo_priority_urgent(client: TestClient) -> None:
+    response = client.post("/todos", json={"title": "Urgent Task", "priority": "urgent"})
+    assert response.status_code == 201
+    assert response.json()["priority"] == "urgent"
+
+
+def test_create_todo_priority_high(client: TestClient) -> None:
+    response = client.post("/todos", json={"title": "High Task", "priority": "high"})
+    assert response.status_code == 201
+    assert response.json()["priority"] == "high"
+
+
+def test_create_todo_priority_medium(client: TestClient) -> None:
+    response = client.post("/todos", json={"title": "Medium Task", "priority": "medium"})
+    assert response.status_code == 201
+    assert response.json()["priority"] == "medium"
+
+
+def test_create_todo_priority_low(client: TestClient) -> None:
+    response = client.post("/todos", json={"title": "Low Task", "priority": "low"})
+    assert response.status_code == 201
+    assert response.json()["priority"] == "low"
+
+
+def test_create_todo_default_priority(client: TestClient) -> None:
+    response = client.post("/todos", json={"title": "No Priority Task"})
+    assert response.status_code == 201
+    assert response.json()["priority"] == "medium"
+
+
+def test_create_todo_invalid_priority_422(client: TestClient) -> None:
+    response = client.post("/todos", json={"title": "Bad Priority", "priority": "critical"})
+    assert response.status_code == 422
+    err_text = str(response.json())
+    for valid in ["urgent", "high", "medium", "low"]:
+        assert valid in err_text
+
+
+def test_create_todo_priority_wrong_casing_422(client: TestClient) -> None:
+    response = client.post("/todos", json={"title": "Wrong Casing Task", "priority": "URGENT"})
+    assert response.status_code == 422
+
+
+def test_update_todo_priority_success(client: TestClient) -> None:
+    created = client.post("/todos", json={"title": "Task to update", "priority": "low"}).json()
+    todo_id = created["id"]
+    assert created["priority"] == "low"
+
+    response = client.put(f"/todos/{todo_id}", json={"priority": "urgent"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == todo_id
+    assert data["priority"] == "urgent"
+    assert data["title"] == "Task to update"
+    assert data["status"] == "created"
+
+
+def test_update_todo_priority_invalid_422(client: TestClient) -> None:
+    created = client.post("/todos", json={"title": "Task to test bad update", "priority": "medium"}).json()
+    todo_id = created["id"]
+
+    response = client.put(f"/todos/{todo_id}", json={"priority": "important"})
+    assert response.status_code == 422
+
+    # Check original priority unchanged
+    check = client.get(f"/todos/{todo_id}").json()
+    assert check["priority"] == "medium"
+
+
+def test_update_todo_omitted_priority_preserves_existing(client: TestClient) -> None:
+    created = client.post("/todos", json={"title": "Original Title", "priority": "urgent"}).json()
+    todo_id = created["id"]
+
+    response = client.put(f"/todos/{todo_id}", json={"title": "New Title"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == todo_id
+    assert data["title"] == "New Title"
+    assert data["priority"] == "urgent"
+
+
+def test_get_todos_filter_by_priority(client: TestClient) -> None:
+    client.post("/todos", json={"title": "Urgent Item 1", "priority": "urgent"})
+    client.post("/todos", json={"title": "High Item 1", "priority": "high"})
+    client.post("/todos", json={"title": "Urgent Item 2", "priority": "urgent"})
+    client.post("/todos", json={"title": "Low Item 1", "priority": "low"})
+
+    response = client.get("/todos?priority=urgent")
+    assert response.status_code == 200
+    data = response.json()
+    items = data["items"]
+    assert len(items) == 2
+    for item in items:
+        assert item["priority"] == "urgent"
+
+
+def test_get_todos_filter_by_priority_empty(client: TestClient) -> None:
+    client.post("/todos", json={"title": "Medium Item", "priority": "medium"})
+
+    response = client.get("/todos?priority=urgent")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["items"] == []
+
+
+def test_get_todos_filter_by_priority_invalid_422(client: TestClient) -> None:
+    response = client.get("/todos?priority=invalid_priority")
+    assert response.status_code == 422
+
+
+def test_get_todos_no_filter_returns_all(client: TestClient) -> None:
+    client.post("/todos", json={"title": "Task Urgent", "priority": "urgent"})
+    client.post("/todos", json={"title": "Task Low", "priority": "low"})
+
+    response = client.get("/todos")
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 2
+
+
+
+
+
