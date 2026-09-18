@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from project_qwe.models.todo import TodoStatus
+from project_qwe.models.todo import TodoPriority, TodoStatus
 
 
 class TodoBase(BaseModel):
@@ -15,6 +15,10 @@ class TodoBase(BaseModel):
     status: TodoStatus = Field(
         default=TodoStatus.CREATED,
         description="Status of the todo item (created, inprogress, completed)",
+    )
+    priority: TodoPriority = Field(
+        default=TodoPriority.MEDIUM,
+        description="Priority level of the todo item (urgent, high, medium, low)",
     )
     due_at: datetime | None = Field(
         default=None,
