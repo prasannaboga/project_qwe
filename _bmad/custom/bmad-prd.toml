@@ -1,0 +1,2 @@
+[workflow]
+run_folder_pattern = "prd-{feature_name}"
