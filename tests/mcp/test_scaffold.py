@@ -31,7 +31,7 @@ def test_mcp_asgi_subapp_routes() -> None:
 
 
 def test_tools_placeholders() -> None:
-    """Verify the 6 MCP tool placeholders exist, are callable, and raise NotImplementedError."""
+    """Verify the 6 MCP tools exist, are callable, and return valid responses rather than NotImplementedError."""
     tool_funcs = [
         tools.list_todos,
         tools.get_todo_by_id,
@@ -44,18 +44,27 @@ def test_tools_placeholders() -> None:
     for func in tool_funcs:
         assert callable(func)
 
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        tools.list_todos()
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        tools.get_todo_by_id(1)
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        tools.search_todos("test")
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        tools.create_todo("test title")
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        tools.update_todo(1, title="new")
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        tools.delete_todo(1)
+    # Basic execution check asserting tools are implemented
+    created = tools.create_todo("Scaffold test todo")
+    assert created["title"] == "Scaffold test todo"
+    todo_id = created["id"]
+
+    fetched = tools.get_todo_by_id(todo_id)
+    assert fetched["id"] == todo_id
+
+    searched = tools.search_todos("Scaffold")
+    assert any(t["id"] == todo_id for t in searched)
+
+    updated = tools.update_todo(todo_id, title="Updated scaffold todo")
+    assert updated["title"] == "Updated scaffold todo"
+
+    listed = tools.list_todos()
+    assert "items" in listed
+    assert listed["per_page"] == 10
+
+    deleted = tools.delete_todo(todo_id)
+    assert deleted["success"] is True
+
 
 
 def test_resources_placeholders() -> None:
