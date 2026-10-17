@@ -99,9 +99,23 @@ def test_prompts_placeholders() -> None:
         prompts.task_breakdown(1)
 
 
-def test_standalone_main_callable() -> None:
-    """Verify standalone entry point is callable."""
-    assert callable(standalone_main)
+def test_standalone_main_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify standalone entry point executes uvicorn.run with expected arguments."""
+    import uvicorn
+
+    recorded_args: dict[str, object] = {}
+
+    def mock_run(app_obj: object, **kwargs: object) -> None:
+        recorded_args["app"] = app_obj
+        recorded_args.update(kwargs)
+
+    monkeypatch.setattr(uvicorn, "run", mock_run)
+    standalone_main()
+
+    assert recorded_args["app"] is mcp_todos_app
+    assert recorded_args["host"] == "127.0.0.1"
+    assert recorded_args["port"] == 8001
+    assert recorded_args["log_level"] == "info"
 
 
 def test_fastapi_mount_registration() -> None:
@@ -110,6 +124,18 @@ def test_fastapi_mount_registration() -> None:
     assert len(mounts) == 1
     mount = mounts[0]
     assert mount.app is mcp_todos_app
+
+
+def test_fastapi_mount_http_dispatch() -> None:
+    """Verify HTTP requests through FastAPI reach the mounted MCP sub-application."""
+    client = TestClient(app, base_url="http://127.0.0.1:8000")
+    response = client.post(
+        "/mcp/todos/messages/",
+        headers={"Content-Type": "application/json"},
+        json={},
+    )
+    assert response.status_code == 400
+    assert "session_id is required" in response.text
 
 
 def test_non_regression_core_routes() -> None:
@@ -135,11 +161,12 @@ def test_ad1_no_orm_models_in_mcp_package() -> None:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    assert "project_qwe.models" not in alias.name, (
+                    assert "models" not in alias.name, (
                         f"Prohibited ORM import '{alias.name}' in {py_file}"
                     )
             elif isinstance(node, ast.ImportFrom):
                 module = node.module or ""
-                assert "project_qwe.models" not in module, (
+                assert "models" not in module and not any("models" in n.name for n in node.names), (
                     f"Prohibited ORM import from '{module}' in {py_file}"
                 )
+

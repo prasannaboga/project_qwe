@@ -2,7 +2,8 @@
 title: 'Scaffold MCP Module Directory, File Placeholders, and FastAPI SSE Mount'
 type: 'feature'
 created: '2026-10-07'
-status: 'in-review'
+status: 'done'
+followup_review_recommended: false
 baseline_commit: 'd4f8b495d92d5b7f359b438b5deca211324fecb9'
 review_loop_iteration: 0
 context:
@@ -109,3 +110,49 @@ app.mount("/mcp/todos", mcp_todos_app)
 **Commands:**
 - `uv run pytest` -- expected: all unit and integration tests pass cleanly including new scaffold tests.
 - `uv run python -c "from project_qwe.main import app; print(app)"` -- expected: FastAPI application loads without error.
+
+## Review Triage Log
+
+### 2026-10-17 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 3: (high 0, medium 0, low 3)
+- defer: 0
+- reject: 8
+- addressed_findings:
+  - `[low]` `[patch]` Added `test_standalone_main_execution` in `tests/mcp/test_scaffold.py` verifying `uvicorn.run` invocation and arguments.
+  - `[low]` `[patch]` Added `test_fastapi_mount_http_dispatch` in `tests/mcp/test_scaffold.py` validating active HTTP dispatch to mounted `/mcp/todos/messages/` endpoint.
+  - `[low]` `[patch]` Strengthened AST import check in `test_ad1_no_orm_models_in_mcp_package` to catch relative and imported alias variations referencing `models`.
+
+## Auto Run Result
+
+### Summary of Implemented Change
+Scaffolded the Todo MCP domain package hierarchy under `src/project_qwe/mcp/todos/` with typed placeholder signatures for tools, context resources, prompts, and a standalone runner. Mounted the MCP ASGI sub-application directly onto the primary FastAPI app at `/mcp/todos` using `app.mount`. Added comprehensive automated tests verifying imports, ASGI route mounting, HTTP dispatch, and architectural isolation from ORM models.
+
+### Files Changed
+- `src/project_qwe/main.py`: Mounted `mcp_todos_app` at `/mcp/todos`.
+- `src/project_qwe/mcp/__init__.py`: Created MCP namespace package initializer.
+- `src/project_qwe/mcp/todos/__init__.py`: Created domain MCP package exporting server, app, and placeholder modules.
+- `src/project_qwe/mcp/todos/server.py`: Initialized `MCPServer("project-qwe-todos")` and created Starlette SSE app.
+- `src/project_qwe/mcp/todos/tools.py`: Defined typed placeholder functions for all 6 MCP tools.
+- `src/project_qwe/mcp/todos/resources.py`: Defined typed placeholder functions for context resources.
+- `src/project_qwe/mcp/todos/prompts.py`: Defined typed placeholder functions for guided prompts.
+- `src/project_qwe/mcp/todos/__main__.py`: Added standalone runner executing `uvicorn.run`.
+- `tests/mcp/test_scaffold.py`: Added automated test suite covering package exports, route declarations, mount registration, live HTTP dispatch, standalone execution, and AD-1 ORM model import isolation.
+- `_bmad-output/implementation-artifacts/spec-1-1-scaffold-mcp-module-directory-file-placeholders-and-fastapi.md`: Updated review triage log, auto run result, and status to `done`.
+
+### Review Findings Breakdown
+- Patches applied: 3 (`[low]` standalone execution mock verification, `[low]` HTTP dispatch verification, `[low]` AST import pattern strengthening).
+- Items deferred: 0.
+- Items rejected: 8 (tool/resource/prompt implementation and live registration correctly reserved for Stories 1.2–1.4; lifespan and auth requirements handled in subsequent architectural layers).
+
+### Follow-up Review Recommendation
+- Recommended: `false` (high: 0, medium: 0, low: 3; score: 3 < 5).
+
+### Verification Performed
+- `uv run pytest`: 79 passed, 3 warnings (0.59s).
+- `uv run python -c "from project_qwe.main import app; print(app)"`: Confirmed clean boot without router conflicts.
+
+### Residual Risks
+None for scaffolding. Subsequent stories (1.2–1.5) will implement the actual tool handlers, database session management, context resources, and protocol-level testing.
+
