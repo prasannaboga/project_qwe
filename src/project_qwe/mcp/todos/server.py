@@ -13,8 +13,10 @@ mcp_todos_app: Starlette = mcp_server.sse_app(
     message_path="/messages",
 )
 
-# Import tools module to trigger @mcp_server.tool() registrations at module load time.
-# This import MUST come after mcp_server is defined.
+# Import tools and resources modules to trigger decorator registrations at module load time.
+# These imports MUST come after mcp_server is defined.
+from project_qwe.mcp.todos import resources as _resources  # noqa: E402, F401
 from project_qwe.mcp.todos import tools as _tools  # noqa: E402, F401
 
 __all__ = ["mcp_server", "mcp_todos_app"]
+

@@ -257,3 +257,127 @@ def delete_todo(db: Session, todo_id: int) -> bool:
     except Exception:
         db.rollback()
         raise
+
+
+def get_active_todos(
+    db: Session,
+    priority: TodoPriority | str | None = None,
+) -> Sequence[Todo]:
+    """Retrieve all active (created, inprogress) Todo items sorted by due date and priority.
+
+    Active items are defined as tasks with status ``created`` or ``inprogress``.
+    Results are sorted by ``due_at:asc`` (nulls last), ``priority:desc`` (semantic urgency order),
+    and ``id:asc`` as a deterministic tie-breaker.
+
+    Args:
+        db: Database session to query against.
+        priority: Optional priority filter (TodoPriority enum or case-insensitive string).
+
+    Returns:
+        Sequence of active Todo items matching the criteria.
+    """
+    stmt = select(Todo).where(
+        Todo.status.in_([TodoStatus.CREATED, TodoStatus.INPROGRESS])
+    )
+    if priority is not None:
+        if isinstance(priority, str):
+            priority = TodoPriority(priority.lower())
+        stmt = stmt.where(Todo.priority == priority)
+
+    order_clauses = _build_sort_clauses("due_at:asc,priority:desc")
+    order_clauses.append(Todo.id.asc())
+    stmt = stmt.order_by(*order_clauses)
+
+    return db.scalars(stmt).all()
+
+
+def get_todo_summary(db: Session) -> dict[str, object]:
+    """Calculate aggregated todo summary statistics and overdue active items.
+
+    Aggregates status counts across all TodoStatus values, priority counts across
+    all TodoPriority values, calculates total items, and finds active items whose
+    ``due_at`` timestamp is in the past.
+
+    Args:
+        db: Database session to query against.
+
+    Returns:
+        Dict containing ``status_counts``, ``priority_counts``, ``total``, and ``overdue_items``.
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+
+    status_counts: dict[TodoStatus, int] = {s: 0 for s in TodoStatus}
+    for s, count in db.execute(select(Todo.status, func.count(Todo.id)).group_by(Todo.status)):
+        status_enum = s if isinstance(s, TodoStatus) else TodoStatus(s)
+        status_counts[status_enum] = count
+
+    priority_counts: dict[TodoPriority, int] = {p: 0 for p in TodoPriority}
+    for p, count in db.execute(select(Todo.priority, func.count(Todo.id)).group_by(Todo.priority)):
+        priority_enum = p if isinstance(p, TodoPriority) else TodoPriority(p)
+        priority_counts[priority_enum] = count
+
+    total = sum(status_counts.values())
+
+    overdue_stmt = (
+        select(Todo)
+        .where(
+            Todo.status.in_([TodoStatus.CREATED, TodoStatus.INPROGRESS]),
+            Todo.due_at.is_not(None),
+            Todo.due_at < now,
+        )
+        .order_by(Todo.due_at.asc(), _priority_order_expr().desc(), Todo.id.asc())
+    )
+    overdue_items = db.scalars(overdue_stmt).all()
+
+    return {
+        "status_counts": status_counts,
+        "priority_counts": priority_counts,
+        "total": total,
+        "overdue_items": overdue_items,
+    }
+
+
+def get_todo_summary_markdown(db: Session) -> str:
+    """Generate a GitHub Flavored Markdown summary document of all todos.
+
+    Formats status breakdown, priority breakdown, and a bulleted list of
+    overdue active items.
+
+    Args:
+        db: Database session to query against.
+
+    Returns:
+        Markdown string formatted according to the PRD FR-14 specification.
+    """
+    summary = get_todo_summary(db)
+    status_counts: dict[TodoStatus, int] = summary["status_counts"]  # type: ignore[assignment]
+    priority_counts: dict[TodoPriority, int] = summary["priority_counts"]  # type: ignore[assignment]
+    total: int = summary["total"]  # type: ignore[assignment]
+    overdue_items: Sequence[Todo] = summary["overdue_items"]  # type: ignore[assignment]
+
+    lines = [
+        "# Todo Summary",
+        "",
+        "## Status",
+        f"- Created: {status_counts.get(TodoStatus.CREATED, 0)}",
+        f"- In Progress: {status_counts.get(TodoStatus.INPROGRESS, 0)}",
+        f"- Completed: {status_counts.get(TodoStatus.COMPLETED, 0)}",
+        f"- Total: {total}",
+        "",
+        "## Priority",
+        f"- Urgent: {priority_counts.get(TodoPriority.URGENT, 0)}",
+        f"- High: {priority_counts.get(TodoPriority.HIGH, 0)}",
+        f"- Medium: {priority_counts.get(TodoPriority.MEDIUM, 0)}",
+        f"- Low: {priority_counts.get(TodoPriority.LOW, 0)}",
+        "",
+        "## Overdue Items",
+    ]
+
+    for item in overdue_items:
+        priority_val = item.priority.value if hasattr(item.priority, "value") else str(item.priority)
+        lines.append(f"- #{item.id}: {item.title} (due: {item.due_at}, priority: {priority_val})")
+
+    return "\n".join(lines)
+
