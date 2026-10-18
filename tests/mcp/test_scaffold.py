@@ -31,7 +31,9 @@ def test_mcp_asgi_subapp_routes() -> None:
 
 
 def test_tools_placeholders() -> None:
-    """Verify the 6 MCP tools exist, are callable, and return valid responses rather than NotImplementedError."""
+    """Verify the 6 MCP tools exist, are callable, and return valid JSON responses (implemented)."""
+    import json as _json
+
     tool_funcs = [
         tools.list_todos,
         tools.get_todo_by_id,
@@ -44,25 +46,25 @@ def test_tools_placeholders() -> None:
     for func in tool_funcs:
         assert callable(func)
 
-    # Basic execution check asserting tools are implemented
-    created = tools.create_todo("Scaffold test todo")
+    # Basic execution check asserting tools are fully implemented
+    created = _json.loads(tools.create_todo("Scaffold test todo"))
     assert created["title"] == "Scaffold test todo"
     todo_id = created["id"]
 
-    fetched = tools.get_todo_by_id(todo_id)
+    fetched = _json.loads(tools.get_todo_by_id(todo_id))
     assert fetched["id"] == todo_id
 
-    searched = tools.search_todos("Scaffold")
+    searched = _json.loads(tools.search_todos("Scaffold"))
     assert any(t["id"] == todo_id for t in searched)
 
-    updated = tools.update_todo(todo_id, title="Updated scaffold todo")
+    updated = _json.loads(tools.update_todo(todo_id, title="Updated scaffold todo"))
     assert updated["title"] == "Updated scaffold todo"
 
-    listed = tools.list_todos()
+    listed = _json.loads(tools.list_todos())
     assert "items" in listed
     assert listed["per_page"] == 10
 
-    deleted = tools.delete_todo(todo_id)
+    deleted = _json.loads(tools.delete_todo(todo_id))
     assert deleted["success"] is True
 
 

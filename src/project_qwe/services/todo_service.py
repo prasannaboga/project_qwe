@@ -1,10 +1,83 @@
 from collections.abc import Sequence
 
-from sqlalchemy import case, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from project_qwe.models.todo import Todo, TodoPriority, TodoStatus
 from project_qwe.schemas.todo import TodoCreate, TodoUpdate
+
+# Urgency weights for SQL-level priority ordering (higher = more urgent)
+_PRIORITY_URGENCY: dict[str, int] = {
+    TodoPriority.URGENT: 4,
+    TodoPriority.HIGH: 3,
+    TodoPriority.MEDIUM: 2,
+    TodoPriority.LOW: 1,
+}
+
+
+def _priority_order_expr():
+    """Return a SQLAlchemy case expression that maps priority values to urgency ints."""
+    return case(_PRIORITY_URGENCY, value=Todo.priority)
+
+
+# Note: 'priority' sorting uses semantic urgency order via SQL case, not alphabetical.
+ALLOWED_SORT_FIELDS = {"id", "title", "due_at", "created_at", "updated_at", "priority"}
+ALLOWED_SORT_DIRECTIONS = {"asc", "desc"}
+
+
+def _build_sort_clauses(sort: str) -> list:
+    """Parse a comma-separated sort directive string and return SQLAlchemy order-by clauses.
+
+    Supports single directives (``"created_at:desc"``) and compound directives
+    (``"due_at:asc,priority:desc"``). ``due_at:asc`` automatically applies
+    ``NULLS LAST`` so tasks without a deadline appear after dated tasks.
+
+    Args:
+        sort: Sort directive string, e.g. ``"due_at:asc,priority:desc"``.
+
+    Returns:
+        List of SQLAlchemy column / expression order-by clauses.
+
+    Raises:
+        ValueError: If any directive token is malformed or references an invalid field/direction.
+    """
+    clauses: list = []
+    for token in sort.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if ":" not in token:
+            raise ValueError(f"Invalid sort token '{token}'. Expected '<field>:<direction>'")
+        field, direction = token.split(":", 1)
+        field = field.strip().lower()
+        direction = direction.strip().lower()
+
+        if field not in ALLOWED_SORT_FIELDS:
+            raise ValueError(
+                f"Invalid sort field '{field}'. Allowed fields: {sorted(ALLOWED_SORT_FIELDS)}"
+            )
+        if direction not in ALLOWED_SORT_DIRECTIONS:
+            raise ValueError(
+                f"Invalid sort direction '{direction}'. Allowed directions: 'asc', 'desc'"
+            )
+
+        if field == "priority":
+            expr = _priority_order_expr()
+            clause = expr.desc() if direction == "desc" else expr.asc()
+        else:
+            col = getattr(Todo, field)
+            if field == "due_at" and direction == "asc":
+                clause = col.asc().nulls_last()
+            elif field == "due_at" and direction == "desc":
+                clause = col.desc().nulls_last()
+            else:
+                clause = getattr(col, direction)()
+        clauses.append(clause)
+
+    if not clauses:
+        raise ValueError("sort string produced no valid directives")
+
+    return clauses
 
 
 def create_todo(db: Session, todo_data: TodoCreate) -> Todo:
@@ -34,24 +107,24 @@ def create_todo(db: Session, todo_data: TodoCreate) -> Todo:
         raise
 
 
-ALLOWED_SORT_FIELDS = {"id", "title", "due_at", "created_at", "updated_at", "priority"}
-ALLOWED_SORT_DIRECTIONS = {"asc", "desc"}
-
-
 def get_todos(
     db: Session,
     page: int = 1,
     per_page: int = 20,
-    sort: str = "due_at:asc,priority:desc",
+    sort: str = "created_at:desc",
     priority: TodoPriority | None = None,
 ) -> tuple[Sequence[Todo], bool]:
-    """Retrieve paginated Todo items with deterministic sorting and limit+1 next-page detection.
+    """Retrieve paginated Todo items with deterministic compound sorting and limit+1 next-page detection.
+
+    Supports comma-separated compound sort strings such as ``"due_at:asc,priority:desc"``.
+    ``priority`` sort uses semantic urgency order (``urgent`` > ``high`` > ``medium`` > ``low``).
+    ``due_at`` ascending automatically places ``NULL`` values last.
 
     Args:
         db: Database session to query against.
         page: Page number (1-based, 1 to 100).
         per_page: Number of items per page (1 to 100).
-        sort: Comma-separated sort directives formatted as '<field>:<direction>'.
+        sort: Sort directive(s) formatted as ``'<field>:<dir>'`` or ``'<f1>:<d1>,<f2>:<d2>'``.
         priority: Optional priority filter level.
 
     Returns:
@@ -65,64 +138,15 @@ def get_todos(
     if per_page < 1 or per_page > 100:
         raise ValueError("per_page must be between 1 and 100")
 
-    if not sort or not sort.strip():
-        raise ValueError("Invalid sort format. Expected '<field>:<direction>'")
+    order_clauses = _build_sort_clauses(sort)
 
-    sort_parts = [part.strip() for part in sort.split(",")]
-    if not sort_parts or any(not part for part in sort_parts):
-        raise ValueError("Invalid sort format. Expected '<field>:<direction>'")
-
-    order_clauses = []
-    seen_fields = set()
-    last_direction = "asc"
-
-    for part in sort_parts:
-        if ":" not in part:
-            raise ValueError("Invalid sort format. Expected '<field>:<direction>'")
-
-        field, direction = part.split(":", 1)
-        field = field.strip().lower()
-        direction = direction.strip().lower()
-
-        if field not in ALLOWED_SORT_FIELDS:
-            raise ValueError(
-                f"Invalid sort field '{field}'. Allowed fields: {sorted(ALLOWED_SORT_FIELDS)}"
-            )
-        if direction not in ALLOWED_SORT_DIRECTIONS:
-            raise ValueError(
-                f"Invalid sort direction '{direction}'. Allowed directions: 'asc', 'desc'"
-            )
-
-        seen_fields.add(field)
-        last_direction = direction
-
-        if field == "priority":
-            priority_order = case(
-                {
-                    TodoPriority.URGENT: 4,
-                    TodoPriority.HIGH: 3,
-                    TodoPriority.MEDIUM: 2,
-                    TodoPriority.LOW: 1,
-                },
-                value=Todo.priority,
-            )
-            order_clauses.append(
-                priority_order.desc() if direction == "desc" else priority_order.asc()
-            )
-        elif field == "due_at":
-            order_clauses.append(
-                Todo.due_at.asc().nulls_last()
-                if direction == "asc"
-                else Todo.due_at.desc().nulls_last()
-            )
-        else:
-            column_attr = getattr(Todo, field)
-            sort_func = getattr(column_attr, direction)
-            order_clauses.append(sort_func())
-
-    if "id" not in seen_fields:
-        id_sort_func = getattr(Todo.id, last_direction)
-        order_clauses.append(id_sort_func())
+    # Always append id as a deterministic tie-breaker when it isn't already in the sort
+    sort_fields_used = {tok.split(":")[0].strip().lower() for tok in sort.split(",") if ":" in tok}
+    if "id" not in sort_fields_used:
+        # Use the same direction as the first sort clause for consistency
+        first_token = sort.split(",")[0].strip()
+        first_dir = first_token.split(":")[1].strip().lower() if ":" in first_token else "desc"
+        order_clauses.append(getattr(Todo.id, first_dir)())
 
     stmt = select(Todo)
     if priority is not None:
@@ -139,36 +163,38 @@ def get_todos(
     return items, has_next_page
 
 
-def search_todos(
-    db: Session,
-    query: str,
-    limit: int = 5,
-) -> Sequence[Todo]:
-    """Search Todo items across title and description with a configurable limit.
+def search_todos(db: Session, query: str, limit: int = 5) -> Sequence[Todo]:
+    """Search Todo items by case-insensitive substring match on title and description.
 
     Args:
         db: Database session to query against.
-        query: Search string to match in title or description.
-        limit: Maximum number of items to return (1 to 20).
+        query: Search string (must be non-empty after stripping whitespace).
+        limit: Maximum number of results to return (1 to 20, default 5).
 
     Returns:
-        A sequence of matching Todo items ordered by updated_at:desc.
+        Sequence of matching Todo items ordered by ``updated_at`` descending.
 
     Raises:
-        ValueError: If query is empty or limit is not between 1 and 20.
+        ValueError: If ``query`` is empty/whitespace-only, or ``limit`` is out of range.
     """
-    if not query or not query.strip():
+    query = query.strip()
+    if not query:
         raise ValueError("query must not be empty")
     if limit < 1 or limit > 20:
         raise ValueError("limit must be between 1 and 20")
 
-    clean_query = query.strip()
+    escaped_query = (
+        query.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+    pattern = f"%{escaped_query}%"
     stmt = (
         select(Todo)
         .where(
             or_(
-                Todo.title.ilike(f"%{clean_query}%"),
-                Todo.description.ilike(f"%{clean_query}%"),
+                func.lower(Todo.title).like(func.lower(pattern), escape="\\"),
+                func.lower(func.coalesce(Todo.description, "")).like(func.lower(pattern), escape="\\"),
             )
         )
         .order_by(Todo.updated_at.desc(), Todo.id.desc())

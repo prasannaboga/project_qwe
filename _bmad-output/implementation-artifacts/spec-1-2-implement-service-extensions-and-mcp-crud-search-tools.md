@@ -2,10 +2,10 @@
 title: 'Story 1.2: Implement Service Extensions and MCP CRUD & Search Tools'
 type: 'feature'
 created: '2026-10-17'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '2aefe564177fe237d30b07c6e7ad0642223e9117'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: []
 deferred: []
@@ -87,7 +87,17 @@ _None._
 
 ## Review Triage Log
 
-_None._
+### 2026-10-18 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 4: (high 1, medium 0, low 3)
+- defer: 0
+- reject: 4: (high 0, medium 0, low 4)
+- addressed_findings:
+  - `[high]` `[patch]` In `update_todo`, only populate `update_kwargs` with explicitly provided non-None arguments to prevent unintentional deletion of existing description and due date fields in `todo_service.update_todo`.
+  - `[low]` `[patch]` In `todo_service.search_todos`, escape SQL LIKE wildcards (`\`, `%`, `_`) so literal search queries do not inadvertently trigger pattern matching.
+  - `[low]` `[patch]` In `src/project_qwe/mcp/todos/tools.py`, clean up unused imports (`TodoPaginationResponse`), use top-level enum imports (`TodoPriority`, `TodoStatus`), and wrap database operations in `try...except` translating unexpected errors to `ToolError`.
+  - `[low]` `[patch]` In `tests/mcp/test_tools.py` and `tests/services/test_todo_service.py`, add explicit test assertions for partial update field preservation and literal SQL wildcard escaping.
 
 ## Design Notes
 
@@ -113,3 +123,35 @@ _None._
 - `uv run pytest tests/services/test_todo_service.py` -- expected: all service tests pass.
 - `uv run pytest tests/mcp/` -- expected: all MCP scaffold and tool tests pass.
 - `uv run pytest` -- expected: entire project test suite passes cleanly with zero failures.
+
+## Auto Run Result
+
+### Summary of implemented change
+Implemented service extensions in `src/project_qwe/services/todo_service.py` (`search_todos` with case-insensitive substring search and SQL wildcard escaping, plus compound sorting support in `get_todos` including priority urgency ordering via `case` and nulls-last `due_at`), and registered/implemented all six MCP tools in `src/project_qwe/mcp/todos/tools.py` (`list_todos`, `get_todo_by_id`, `search_todos`, `create_todo`, `update_todo`, `delete_todo`) using operation-scoped database sessions (`with SessionLocal() as db:`), Pydantic schema validation, and zero direct ORM model imports (strictly adhering to AD-1).
+
+### Files changed
+- `src/project_qwe/services/todo_service.py`: Added `search_todos`, compound sorting parser `_build_sort_clauses`, and semantic priority urgency ordering with nulls-last due dates.
+- `src/project_qwe/mcp/todos/tools.py`: Implemented and registered all 6 MCP tools with `@mcp_server.tool()`, context-managed sessions, schema validation, and safe partial updating.
+- `src/project_qwe/mcp/todos/server.py`: Imported `tools` module upon load to trigger `@mcp_server.tool()` decorators.
+- `tests/services/test_todo_service.py`: Added unit test coverage for `search_todos`, limit boundaries, empty queries, compound sorting, and wildcard escaping.
+- `tests/mcp/test_tools.py`: Added comprehensive test suite for all 6 tools covering happy paths, bounds, error handling, session scoping, and AD-1 compliance.
+- `tests/mcp/test_scaffold.py`: Updated `test_tools_placeholders` to verify implemented tool functions return JSON output.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`: Marked Story 1.2 as done.
+
+### Review findings breakdown
+- Patches applied: 4 (1 high: partial update field erasure, 3 low: wildcard escaping, error wrapping / import cleanups, test assertions)
+- Items deferred: 0
+- Items rejected: 4 (out-of-scope `search_todos` pagination, `status` filter on `list_todos`, timezone normalization, and retaining `created_at:desc` default on `get_todos` for REST preservation)
+
+### Follow-up review recommendation
+- Recommended: `true`
+- Patched counts by severity: high: 1, medium: 0, low: 3. Score: high >= 1 triggers follow-up review recommendation.
+
+### Verification performed
+- `uv run pytest tests/services/test_todo_service.py` -> 29 passed
+- `uv run pytest tests/mcp/` -> 45 passed
+- `uv run pytest` -> 128 passed cleanly in 0.84s with zero failures
+
+### Residual risks
+None identified. Invariant AD-1 verified via AST analysis; all 6 MCP tools execute cleanly in-memory and register with `mcp_server`.
+

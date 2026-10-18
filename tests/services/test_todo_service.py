@@ -92,7 +92,7 @@ def test_get_todos_invalid_parameters(db_session: Session) -> None:
     with pytest.raises(ValueError, match="per_page must be between 1 and 100"):
         todo_service.get_todos(db_session, per_page=101)
 
-    with pytest.raises(ValueError, match="Invalid sort format"):
+    with pytest.raises(ValueError, match="Invalid sort token"):
         todo_service.get_todos(db_session, sort="invalid_format")
 
     with pytest.raises(ValueError, match="Invalid sort field"):
@@ -222,4 +222,175 @@ def test_get_todos_priority_none_returns_all(db_session: Session) -> None:
     all_todos, _ = todo_service.get_todos(db_session, priority=None)
     assert len(all_todos) == 3
 
+
+
+
+# ---------------------------------------------------------------------------
+# search_todos tests
+# ---------------------------------------------------------------------------
+
+def test_search_todos_title_match(db_session: Session) -> None:
+    from project_qwe.models.todo import TodoPriority
+    todo_service.create_todo(db_session, TodoCreate(title="Buy groceries", priority=TodoPriority.HIGH))
+    todo_service.create_todo(db_session, TodoCreate(title="Call dentist"))
+    todo_service.create_todo(db_session, TodoCreate(title="Buy flowers"))
+
+    results = todo_service.search_todos(db_session, query="buy")
+    assert len(results) == 2
+    titles = {t.title for t in results}
+    assert "Buy groceries" in titles
+    assert "Buy flowers" in titles
+
+
+def test_search_todos_description_match(db_session: Session) -> None:
+    todo_service.create_todo(
+        db_session,
+        TodoCreate(title="Sprint planning", description="Discuss database migration strategy"),
+    )
+    todo_service.create_todo(db_session, TodoCreate(title="Code review"))
+
+    results = todo_service.search_todos(db_session, query="migration")
+    assert len(results) == 1
+    assert results[0].title == "Sprint planning"
+
+
+def test_search_todos_case_insensitive(db_session: Session) -> None:
+    todo_service.create_todo(db_session, TodoCreate(title="URGENT: Fix production bug"))
+
+    upper_results = todo_service.search_todos(db_session, query="urgent")
+    lower_results = todo_service.search_todos(db_session, query="URGENT")
+    assert len(upper_results) == 1
+    assert len(lower_results) == 1
+
+
+def test_search_todos_no_match(db_session: Session) -> None:
+    todo_service.create_todo(db_session, TodoCreate(title="Simple task"))
+
+    results = todo_service.search_todos(db_session, query="xyznotfound")
+    assert len(results) == 0
+
+
+def test_search_todos_empty_query_raises(db_session: Session) -> None:
+    with pytest.raises(ValueError, match="query must not be empty"):
+        todo_service.search_todos(db_session, query="")
+
+    with pytest.raises(ValueError, match="query must not be empty"):
+        todo_service.search_todos(db_session, query="   ")
+
+
+def test_search_todos_limit_bounds(db_session: Session) -> None:
+    with pytest.raises(ValueError, match="limit must be between 1 and 20"):
+        todo_service.search_todos(db_session, query="test", limit=0)
+
+    with pytest.raises(ValueError, match="limit must be between 1 and 20"):
+        todo_service.search_todos(db_session, query="test", limit=21)
+
+
+def test_search_todos_respects_limit(db_session: Session) -> None:
+    for i in range(10):
+        todo_service.create_todo(db_session, TodoCreate(title=f"Task {i} with keyword"))
+
+    results = todo_service.search_todos(db_session, query="keyword", limit=3)
+    assert len(results) == 3
+
+
+def test_search_todos_ordered_by_updated_at_desc(db_session: Session) -> None:
+    t1 = todo_service.create_todo(db_session, TodoCreate(title="Old keyword task"))
+    t2 = todo_service.create_todo(db_session, TodoCreate(title="New keyword task"))
+    # Update t1 so it has a newer updated_at
+    from project_qwe.schemas.todo import TodoUpdate as _TU
+    todo_service.update_todo(db_session, t1.id, _TU(title="Refreshed keyword task"))
+
+    results = todo_service.search_todos(db_session, query="keyword")
+    # t1 (now refreshed) should appear before t2
+    assert results[0].id == t1.id
+
+
+# ---------------------------------------------------------------------------
+# compound sort / priority urgency tests
+# ---------------------------------------------------------------------------
+
+def test_get_todos_compound_sort_due_at_asc_priority_desc(db_session: Session) -> None:
+    from datetime import timezone
+    from project_qwe.models.todo import TodoPriority
+    due_soon = datetime(2026, 11, 1, 0, 0, 0, tzinfo=timezone.utc)
+    due_late = datetime(2026, 12, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+    t_urgent_late = todo_service.create_todo(
+        db_session, TodoCreate(title="Urgent late", priority=TodoPriority.URGENT, due_at=due_late)
+    )
+    t_high_soon = todo_service.create_todo(
+        db_session, TodoCreate(title="High soon", priority=TodoPriority.HIGH, due_at=due_soon)
+    )
+    t_urgent_soon = todo_service.create_todo(
+        db_session, TodoCreate(title="Urgent soon", priority=TodoPriority.URGENT, due_at=due_soon)
+    )
+
+    todos, _ = todo_service.get_todos(db_session, sort="due_at:asc,priority:desc")
+    # Both t_urgent_soon and t_high_soon have due_soon; urgent > high so urgent first
+    assert todos[0].id == t_urgent_soon.id
+    assert todos[1].id == t_high_soon.id
+    # t_urgent_late has due_late so it comes last
+    assert todos[2].id == t_urgent_late.id
+
+
+def test_get_todos_due_at_asc_nulls_last(db_session: Session) -> None:
+    from datetime import timezone
+
+    due = datetime(2026, 11, 1, 0, 0, 0, tzinfo=timezone.utc)
+    t_no_due = todo_service.create_todo(db_session, TodoCreate(title="No due date"))
+    t_with_due = todo_service.create_todo(db_session, TodoCreate(title="Has due date", due_at=due))
+
+    todos, _ = todo_service.get_todos(db_session, sort="due_at:asc")
+    assert todos[0].id == t_with_due.id
+    assert todos[1].id == t_no_due.id
+
+
+def test_get_todos_priority_urgency_sort_desc(db_session: Session) -> None:
+    from project_qwe.models.todo import TodoPriority
+    todo_service.create_todo(db_session, TodoCreate(title="Low", priority=TodoPriority.LOW))
+    todo_service.create_todo(db_session, TodoCreate(title="Urgent", priority=TodoPriority.URGENT))
+    todo_service.create_todo(db_session, TodoCreate(title="Medium", priority=TodoPriority.MEDIUM))
+    todo_service.create_todo(db_session, TodoCreate(title="High", priority=TodoPriority.HIGH))
+
+    todos, _ = todo_service.get_todos(db_session, sort="priority:desc")
+    priority_order = [t.priority.value for t in todos]
+    assert priority_order == ["urgent", "high", "medium", "low"]
+
+
+def test_get_todos_priority_sort_asc(db_session: Session) -> None:
+    from project_qwe.models.todo import TodoPriority
+    todo_service.create_todo(db_session, TodoCreate(title="Low", priority=TodoPriority.LOW))
+    todo_service.create_todo(db_session, TodoCreate(title="Urgent", priority=TodoPriority.URGENT))
+    todo_service.create_todo(db_session, TodoCreate(title="Medium", priority=TodoPriority.MEDIUM))
+    todo_service.create_todo(db_session, TodoCreate(title="High", priority=TodoPriority.HIGH))
+
+    todos, _ = todo_service.get_todos(db_session, sort="priority:asc")
+    priority_order = [t.priority.value for t in todos]
+    assert priority_order == ["low", "medium", "high", "urgent"]
+
+
+def test_get_todos_compound_sort_invalid_token(db_session: Session) -> None:
+    with pytest.raises(ValueError, match="Invalid sort token"):
+        todo_service.get_todos(db_session, sort="nocolon")
+
+    with pytest.raises(ValueError, match="Invalid sort field"):
+        todo_service.get_todos(db_session, sort="badfield:asc")
+
+
+def test_search_todos_wildcards_escaped(db_session: Session) -> None:
+    todo_service.create_todo(db_session, TodoCreate(title="Discount 50% off"))
+    todo_service.create_todo(db_session, TodoCreate(title="Discount 500 off"))
+    todo_service.create_todo(db_session, TodoCreate(title="Item_1 test"))
+    todo_service.create_todo(db_session, TodoCreate(title="ItemA1 test"))
+
+    # Literal % should match only "Discount 50% off", not "Discount 500 off"
+    percent_results = todo_service.search_todos(db_session, query="50%")
+    assert len(percent_results) == 1
+    assert percent_results[0].title == "Discount 50% off"
+
+    # Literal _ should match only "Item_1 test", not "ItemA1 test"
+    underscore_results = todo_service.search_todos(db_session, query="Item_1")
+    assert len(underscore_results) == 1
+    assert underscore_results[0].title == "Item_1 test"
 
