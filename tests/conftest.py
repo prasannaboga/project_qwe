@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from project_qwe.config.database import Base, get_db
+from project_qwe.config.database import Base, SessionLocal, get_db
 from project_qwe.main import app
 
 # In-memory SQLite engine for tests
@@ -18,6 +18,7 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal.configure(bind=engine)
 
 
 @pytest.fixture(autouse=True)
