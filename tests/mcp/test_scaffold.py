@@ -70,7 +70,9 @@ def test_tools_placeholders() -> None:
 
 
 def test_resources_placeholders() -> None:
-    """Verify the MCP context resource placeholders exist and raise NotImplementedError."""
+    """Verify the MCP context resources exist, are callable, and return valid responses (implemented)."""
+    import json as _json
+
     resource_funcs = [
         resources.items,
         resources.items_by_id,
@@ -81,14 +83,15 @@ def test_resources_placeholders() -> None:
     for func in resource_funcs:
         assert callable(func)
 
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        resources.items()
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        resources.items_by_id(1)
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        resources.summary()
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        resources.priorities("high")
+    # Basic execution check asserting resources are fully implemented
+    items_out = _json.loads(resources.items())
+    assert isinstance(items_out, list)
+
+    summary_out = resources.summary()
+    assert "# Todo Summary" in summary_out
+
+    priorities_out = _json.loads(resources.priorities("medium"))
+    assert isinstance(priorities_out, list)
 
 
 def test_prompts_placeholders() -> None:

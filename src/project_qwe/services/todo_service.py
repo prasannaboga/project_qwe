@@ -375,9 +375,12 @@ def get_todo_summary_markdown(db: Session) -> str:
         "## Overdue Items",
     ]
 
-    for item in overdue_items:
-        priority_val = item.priority.value if hasattr(item.priority, "value") else str(item.priority)
-        lines.append(f"- #{item.id}: {item.title} (due: {item.due_at}, priority: {priority_val})")
+    if not overdue_items:
+        lines.append("- None")
+    else:
+        for item in overdue_items:
+            priority_val = item.priority.value if hasattr(item.priority, "value") else str(item.priority)
+            lines.append(f"- #{item.id}: {item.title} (due: {item.due_at}, priority: {priority_val})")
 
     return "\n".join(lines)
 

@@ -2,7 +2,7 @@
 title: 'Story 1.3: Implement MCP Context Resources'
 type: 'feature'
 created: '2026-10-18'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '49c320be989fdc9012a66be1a1606846ee9fe458'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -84,6 +84,15 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-10-26 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 1: (high 0, medium 1, low 0)
+- defer: 0
+- reject: 0
+- addressed_findings:
+  - `[medium]` `[patch]` Added empty overdue handling (`- None`) in `todo_service.get_todo_summary_markdown`, implemented full test suite in `tests/mcp/test_resources.py`, and updated `tests/mcp/test_scaffold.py`.
+
 ## Design Notes
 
 `mcp_server.resource(uri, mime_type)` registers static resources when `uri` contains no template parameters (e.g., `todo://items`, `todo://summary`) and dynamic resource templates when parameters are present (e.g., `todo://items/{id}`, `todo://priorities/{priority}`).
@@ -119,3 +128,36 @@ For `todo://summary`, formatting into clean GFM Markdown:
 - `uv run pytest tests/services/test_todo_service.py` -- expected: All service tests pass including new active todos and summary tests.
 - `uv run pytest tests/mcp/test_resources.py` -- expected: All MCP resource tests pass including template resolution and AST checks.
 - `uv run pytest` -- expected: Full test suite passes (all 128+ tests).
+
+## Auto Run Result
+
+### Summary of Implemented Change
+Implemented the four MCP context resources (`todo://items`, `todo://items/{id}`, `todo://summary`, `todo://priorities/{priority}`) in `src/project_qwe/mcp/todos/resources.py` registered with `@mcp_server.resource(...)`. Extended `todo_service` with SQL-level queries for active task filtering (`get_active_todos`) and aggregated summary calculation/formatting (`get_todo_summary`, `get_todo_summary_markdown`). Enforced operation-scoped database sessions with `with SessionLocal() as db:` and verified strict compliance with AD-1 (zero imports from `project_qwe.models` in MCP module).
+
+### Files Changed
+- `src/project_qwe/services/todo_service.py` -- Implemented `get_active_todos` with priority/status filtering and compound sorting, `get_todo_summary`, and `get_todo_summary_markdown`.
+- `src/project_qwe/mcp/todos/resources.py` -- Implemented and registered 4 MCP resources (`items`, `items_by_id`, `summary`, `priorities`) using `SessionLocal()` context managers and Pydantic schema validation.
+- `src/project_qwe/mcp/todos/server.py` -- Added import of `resources` to trigger decorator registrations on application startup.
+- `tests/mcp/test_scaffold.py` -- Updated placeholder checks to verify functional MCP context resources.
+- `tests/mcp/test_resources.py` -- Added 16 comprehensive unit and integration tests covering resource discovery, template matching, error handling, edge cases, and AD-1 compliance.
+- `tests/services/test_todo_service.py` -- Added unit tests for `get_active_todos` filtering and sorting, and `get_todo_summary` markdown generation.
+- `_bmad-output/implementation-artifacts/spec-1-3-implement-mcp-context-resources.md` -- Completed spec, triage log, and auto run result.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` -- Updated story status to `done`.
+
+### Review Findings Breakdown
+- Patches applied: 1 (added `- None` fallback for empty overdue lists, updated scaffold test, created resources test suite)
+- Items deferred: 0
+- Items rejected: 0
+
+### Follow-up Review Recommendation
+- Recommendation: `false`
+- Breakdown: 0 high, 1 medium, 0 low. Weighted score = 3 (threshold is 5).
+
+### Verification Performed
+- `uv run pytest tests/services/test_todo_service.py` (33 passed)
+- `uv run pytest tests/mcp/test_resources.py` (16 passed)
+- `uv run pytest tests/mcp/test_scaffold.py` (10 passed)
+- `uv run pytest` (148 passed cleanly)
+
+### Residual Risks
+- None identified. All DB sessions are scoped per resource request, queries are executed at the SQL level, and AST checks verify zero models leakage into MCP.

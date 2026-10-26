@@ -394,3 +394,128 @@ def test_search_todos_wildcards_escaped(db_session: Session) -> None:
     assert len(underscore_results) == 1
     assert underscore_results[0].title == "Item_1 test"
 
+
+def test_get_active_todos_filters_completed(db_session: Session) -> None:
+    todo_service.create_todo(db_session, TodoCreate(title="Active 1", status=TodoStatus.CREATED))
+    todo_service.create_todo(db_session, TodoCreate(title="Active 2", status=TodoStatus.INPROGRESS))
+    todo_service.create_todo(db_session, TodoCreate(title="Done", status=TodoStatus.COMPLETED))
+
+    active = todo_service.get_active_todos(db_session)
+    titles = [t.title for t in active]
+    assert "Active 1" in titles
+    assert "Active 2" in titles
+    assert "Done" not in titles
+
+
+def test_get_active_todos_priority_filter(db_session: Session) -> None:
+    from project_qwe.models.todo import TodoPriority
+
+    todo_service.create_todo(db_session, TodoCreate(title="Urgent 1", priority=TodoPriority.URGENT))
+    todo_service.create_todo(db_session, TodoCreate(title="Low 1", priority=TodoPriority.LOW))
+    todo_service.create_todo(db_session, TodoCreate(title="Urgent Done", priority=TodoPriority.URGENT, status=TodoStatus.COMPLETED))
+
+    urgent_items = todo_service.get_active_todos(db_session, priority=TodoPriority.URGENT)
+    assert len(urgent_items) == 1
+    assert urgent_items[0].title == "Urgent 1"
+
+    # Test case-insensitive string priority filter
+    urgent_by_str = todo_service.get_active_todos(db_session, priority="urgent")
+    assert len(urgent_by_str) == 1
+    assert urgent_by_str[0].title == "Urgent 1"
+
+
+def test_get_active_todos_sorting(db_session: Session) -> None:
+    from datetime import timedelta
+    from project_qwe.models.todo import TodoPriority
+
+    now = datetime.now(timezone.utc)
+    # Earlier due date
+    t1 = todo_service.create_todo(
+        db_session,
+        TodoCreate(title="Earlier due", due_at=now + timedelta(days=1), priority=TodoPriority.LOW),
+    )
+    # Later due date
+    t2 = todo_service.create_todo(
+        db_session,
+        TodoCreate(title="Later due", due_at=now + timedelta(days=5), priority=TodoPriority.URGENT),
+    )
+    # No due date (nulls last) but urgent
+    t3 = todo_service.create_todo(
+        db_session,
+        TodoCreate(title="No due date", due_at=None, priority=TodoPriority.URGENT),
+    )
+
+    items = todo_service.get_active_todos(db_session)
+    ids = [t.id for t in items]
+    # Earlier due date comes first, then later due date, then null due_at last
+    assert ids == [t1.id, t2.id, t3.id]
+
+
+def test_get_todo_summary_and_markdown(db_session: Session) -> None:
+    from datetime import timedelta
+    from project_qwe.models.todo import TodoPriority
+
+    now = datetime.now(timezone.utc)
+    # 1 Created, High, Overdue
+    overdue_task = todo_service.create_todo(
+        db_session,
+        TodoCreate(
+            title="Overdue task",
+            status=TodoStatus.CREATED,
+            priority=TodoPriority.HIGH,
+            due_at=now - timedelta(days=2),
+        ),
+    )
+    # 1 In Progress, Medium, Future
+    todo_service.create_todo(
+        db_session,
+        TodoCreate(
+            title="Future task",
+            status=TodoStatus.INPROGRESS,
+            priority=TodoPriority.MEDIUM,
+            due_at=now + timedelta(days=2),
+        ),
+    )
+    # 1 Completed, Urgent, Past (must NOT be counted in overdue_items because completed)
+    todo_service.create_todo(
+        db_session,
+        TodoCreate(
+            title="Completed past task",
+            status=TodoStatus.COMPLETED,
+            priority=TodoPriority.URGENT,
+            due_at=now - timedelta(days=3),
+        ),
+    )
+
+    summary_data = todo_service.get_todo_summary(db_session)
+    assert summary_data["total"] == 3
+    assert summary_data["status_counts"][TodoStatus.CREATED] == 1
+    assert summary_data["status_counts"][TodoStatus.INPROGRESS] == 1
+    assert summary_data["status_counts"][TodoStatus.COMPLETED] == 1
+    assert summary_data["priority_counts"][TodoPriority.HIGH] == 1
+    assert summary_data["priority_counts"][TodoPriority.MEDIUM] == 1
+    assert summary_data["priority_counts"][TodoPriority.URGENT] == 1
+
+    overdue_items = summary_data["overdue_items"]
+    assert len(overdue_items) == 1
+    assert overdue_items[0].id == overdue_task.id
+
+    md = todo_service.get_todo_summary_markdown(db_session)
+    assert "# Todo Summary" in md
+    assert "## Status" in md
+    assert "- Created: 1" in md
+    assert "- In Progress: 1" in md
+    assert "- Completed: 1" in md
+    assert "- Total: 3" in md
+    assert "## Priority" in md
+    assert "- High: 1" in md
+    assert "## Overdue Items" in md
+    assert f"- #{overdue_task.id}: Overdue task" in md
+
+    # Verify when no items are overdue
+    empty_summary_md = todo_service.get_todo_summary_markdown(db_session)
+    # Clear overdue tasks
+    todo_service.delete_todo(db_session, overdue_task.id)
+    no_overdue_md = todo_service.get_todo_summary_markdown(db_session)
+    assert "- None" in no_overdue_md
+
