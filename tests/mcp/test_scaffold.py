@@ -95,7 +95,7 @@ def test_resources_placeholders() -> None:
 
 
 def test_prompts_placeholders() -> None:
-    """Verify the MCP prompt placeholders exist and raise NotImplementedError."""
+    """Verify the MCP prompts exist, are callable, and return valid prompt strings (implemented)."""
     prompt_funcs = [
         prompts.daily_planning,
         prompts.triage_backlog,
@@ -105,12 +105,12 @@ def test_prompts_placeholders() -> None:
     for func in prompt_funcs:
         assert callable(func)
 
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        prompts.daily_planning()
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        prompts.triage_backlog()
-    with pytest.raises(NotImplementedError, match="Placeholder"):
-        prompts.task_breakdown(1)
+    # Basic execution check asserting prompts are fully implemented
+    dp_out = prompts.daily_planning()
+    assert "daily task planning" in dp_out
+
+    tb_out = prompts.triage_backlog()
+    assert "Backlog Items" in tb_out
 
 
 def test_standalone_main_execution(monkeypatch: pytest.MonkeyPatch) -> None:

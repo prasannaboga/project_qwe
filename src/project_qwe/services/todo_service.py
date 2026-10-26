@@ -291,6 +291,34 @@ def get_active_todos(
     return db.scalars(stmt).all()
 
 
+def get_backlog_todos(
+    db: Session,
+    limit: int = 20,
+) -> Sequence[Todo]:
+    """Retrieve unstarted backlog Todo items (status='created') ordered by priority and age.
+
+    Args:
+        db: Database session to query against.
+        limit: Maximum number of backlog items to return (1 to 50, default 20).
+
+    Returns:
+        Sequence of backlog Todo items.
+
+    Raises:
+        ValueError: If limit is not between 1 and 50.
+    """
+    if limit < 1 or limit > 50:
+        raise ValueError("limit must be between 1 and 50")
+
+    stmt = (
+        select(Todo)
+        .where(Todo.status == TodoStatus.CREATED)
+        .order_by(_priority_order_expr().desc(), Todo.created_at.asc(), Todo.id.asc())
+        .limit(limit)
+    )
+    return db.scalars(stmt).all()
+
+
 def get_todo_summary(db: Session) -> dict[str, object]:
     """Calculate aggregated todo summary statistics and overdue active items.
 

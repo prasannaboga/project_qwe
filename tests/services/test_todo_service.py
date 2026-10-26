@@ -519,3 +519,32 @@ def test_get_todo_summary_and_markdown(db_session: Session) -> None:
     no_overdue_md = todo_service.get_todo_summary_markdown(db_session)
     assert "- None" in no_overdue_md
 
+
+def test_get_backlog_todos(db_session: Session) -> None:
+    from project_qwe.models.todo import TodoPriority
+
+    # Create backlog items (CREATED) with varying priorities
+    b_low = todo_service.create_todo(db_session, TodoCreate(title="Backlog Low", priority=TodoPriority.LOW, status=TodoStatus.CREATED))
+    b_urgent = todo_service.create_todo(db_session, TodoCreate(title="Backlog Urgent", priority=TodoPriority.URGENT, status=TodoStatus.CREATED))
+    b_high = todo_service.create_todo(db_session, TodoCreate(title="Backlog High", priority=TodoPriority.HIGH, status=TodoStatus.CREATED))
+
+    # Create non-backlog items (INPROGRESS, COMPLETED)
+    todo_service.create_todo(db_session, TodoCreate(title="Inprogress item", status=TodoStatus.INPROGRESS))
+    todo_service.create_todo(db_session, TodoCreate(title="Completed item", status=TodoStatus.COMPLETED))
+
+    backlog = todo_service.get_backlog_todos(db_session, limit=10)
+    assert len(backlog) == 3
+    # Check ordering: urgent > high > low
+    assert [b.id for b in backlog] == [b_urgent.id, b_high.id, b_low.id]
+
+    # Test limit clamping
+    limited = todo_service.get_backlog_todos(db_session, limit=2)
+    assert len(limited) == 2
+    assert [b.id for b in limited] == [b_urgent.id, b_high.id]
+
+    # Test limit bounds validation
+    with pytest.raises(ValueError, match="limit must be between 1 and 50"):
+        todo_service.get_backlog_todos(db_session, limit=0)
+    with pytest.raises(ValueError, match="limit must be between 1 and 50"):
+        todo_service.get_backlog_todos(db_session, limit=51)
+
