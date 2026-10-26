@@ -10,7 +10,7 @@ mcp_server = MCPServer(
 
 mcp_todos_app: Starlette = mcp_server.sse_app(
     sse_path="/sse",
-    message_path="/messages",
+    message_path="/messages/",
 )
 
 # Import tools, resources, and prompts modules to trigger decorator registrations at module load time.

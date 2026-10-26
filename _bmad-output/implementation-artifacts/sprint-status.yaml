@@ -34,10 +34,10 @@ project: project_qwe
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-scaffold-mcp-module-directory-file-placeholders-and-fastapi: done
   1-2-implement-service-extensions-and-mcp-crud-search-tools: done
   1-3-implement-mcp-context-resources: done
   1-4-implement-mcp-guided-workflow-prompts: done
-  1-5-implement-automated-test-suite-and-protocol-compliance-verif: backlog
+  1-5-implement-automated-test-suite-and-protocol-compliance-verif: done
   epic-1-retrospective: optional
