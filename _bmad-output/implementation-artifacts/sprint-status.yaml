@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-05-2026 16:04
-last_updated: 10-18-2026 16:05
+last_updated: 10-26-2026 19:52
 project: project_qwe
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
@@ -40,4 +40,31 @@ development_status:
   1-3-implement-mcp-context-resources: done
   1-4-implement-mcp-guided-workflow-prompts: done
   1-5-implement-automated-test-suite-and-protocol-compliance-verif: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
+action_items:
+  - id: "epic-1-retro-item-1-add-story-id-prefix-convention-to-commit"
+    epic: 1
+    action: "Add story-ID prefix convention to commit subject lines; document in AGENTS.md"
+    owner: "Prasannaboga"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-26.md"
+  - id: "epic-1-retro-item-2-monitor-sse-e2e-test-in-ci-for-intermitt"
+    epic: 1
+    action: "Monitor SSE e2e test in CI for intermittent failures; add startup-ready
+      poll if fail rate > 0"
+    owner: "Prasannaboga"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-26.md"
+  - id: "epic-1-retro-item-3-set-a-400-line-soft-cap-convention-for-s"
+    epic: 1
+    action: "Set a 400-line soft cap convention for service files in AGENTS.md"
+    owner: "Prasannaboga"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-26.md"
+  - id: "epic-1-retro-item-4-add-clarifying-note-to-spec-1-2-iserror"
+    epic: 1
+    action: "Add clarifying note to spec-1-2: isError is JSON wire field; Python SDK
+      attribute is is_error"
+    owner: "Prasannaboga"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-26.md"
