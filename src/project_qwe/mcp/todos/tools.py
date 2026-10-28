@@ -6,13 +6,19 @@ managers. No ORM model imports are permitted in this module (AD-1).
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any, Callable
 
+from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from project_qwe.config.database import SessionLocal
+from project_qwe.config.settings import settings
 from project_qwe.mcp.todos.server import mcp_server
 from project_qwe.schemas.todo import (
     TodoCreate,
@@ -27,6 +33,11 @@ from project_qwe.services import todo_service
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+_CURSOR_VERSION = 1
+_CURSOR_MODE = "created_at_desc_id_desc"
+_CURSOR_SORT = "created_at:desc,id:desc"
+_MAX_CURSOR_LENGTH = 1024
 
 def _serialize_todo(todo: Any) -> dict[str, Any]:
     """Serialize a Todo ORM instance to a plain dict via TodoResponse."""
@@ -69,16 +80,79 @@ def _parse_status(status_str: str | None) -> TodoStatus | None:
     return allowed[status_str]
 
 
+def _encode_cursor(todo: Any, priority: str | None, per_page: int) -> str:
+    """Encode the final Todo in a cursor page as an opaque continuation token."""
+    payload = {
+        "v": _CURSOR_VERSION,
+        "mode": _CURSOR_MODE,
+        "priority": priority,
+        "per_page": per_page,
+        "created_at": todo.created_at.isoformat(),
+        "id": todo.id,
+    }
+    encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    return base64.urlsafe_b64encode(encoded).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str, priority: str | None, per_page: int) -> tuple[datetime, int]:
+    """Validate and decode a list-Todo continuation token."""
+    if not cursor or len(cursor) > _MAX_CURSOR_LENGTH:
+        raise ToolError("Invalid cursor")
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode()))
+        if not isinstance(payload, dict):
+            raise ValueError("cursor must be an object")
+        if payload.get("v") != _CURSOR_VERSION or payload.get("mode") != _CURSOR_MODE:
+            raise ValueError("unsupported cursor")
+        if payload.get("priority") != priority or payload.get("per_page") != per_page:
+            raise ValueError("cursor request does not match")
+        created_at = datetime.fromisoformat(payload["created_at"])
+        todo_id = payload["id"]
+        if not isinstance(todo_id, int) or isinstance(todo_id, bool) or todo_id < 1:
+            raise ValueError("invalid todo id")
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ToolError("Invalid cursor") from exc
+    return created_at, todo_id
+
+
+async def _report_progress(
+    ctx: Context | None, progress: int, message: str
+) -> None:
+    """Report an optional progress update without affecting direct unit calls."""
+    if ctx is not None:
+        await ctx.report_progress(progress, 3, message)
+
+
+async def _await_demo_delay(ctx: Context | None) -> None:
+    """Emit mutation progress around the optional non-blocking demonstration delay."""
+    await _report_progress(ctx, 1, "Validation complete")
+    if settings.MCP_TODOS_PROGRESS_DELAY_SECONDS:
+        await asyncio.sleep(settings.MCP_TODOS_PROGRESS_DELAY_SECONDS)
+    await _report_progress(ctx, 2, "Ready to persist")
+
+
+def _with_session(operation: Callable[[Any], Any]) -> Any:
+    """Run one synchronous Todo service operation in a short-lived database session."""
+    with SessionLocal() as db:
+        return operation(db)
+
+
 # ---------------------------------------------------------------------------
 # MCP Tool Registrations
 # ---------------------------------------------------------------------------
 
-@mcp_server.tool()
+@mcp_server.tool(
+    title="List Todos",
+    description="List Todo items using existing offset pagination or opaque cursor continuations.",
+    annotations=ToolAnnotations(read_only_hint=True, idempotent_hint=True),
+)
 def list_todos(
-    page: int = 1,
-    per_page: int = 10,
-    sort: str = "due_at:asc,priority:desc",
-    priority: str | None = None,
+    page: Annotated[int | None, Field(title="Page", description="Legacy offset page (1-100).", json_schema_extra={"minimum": 1, "maximum": 100})] = None,
+    per_page: Annotated[int, Field(title="Items per page", description="Page size from 5 through 20.", json_schema_extra={"minimum": 5, "maximum": 20})] = 10,
+    sort: Annotated[str | None, Field(title="Sort", description="Legacy sort; cursor mode requires created_at:desc,id:desc.")] = None,
+    priority: Annotated[str | None, Field(title="Priority filter", description="Optional priority: urgent, high, medium, or low.")] = None,
+    cursor: Annotated[str | None, Field(title="Cursor", description="Opaque continuation returned by a previous cursor-mode result.")] = None,
 ) -> str:
     """Retrieve a paginated list of todo items with default sorting optimized for LLM planning.
 
@@ -93,15 +167,39 @@ def list_todos(
     """
     if per_page < 5 or per_page > 20:
         raise ToolError("per_page must be between 5 and 20")
-    if page < 1 or page > 100:
+    if page is not None and (page < 1 or page > 100):
         raise ToolError("page must be between 1 and 100")
 
     priority_enum = _parse_priority(priority)
+    if cursor is not None:
+        if page is not None:
+            raise ToolError("page cannot be used with cursor")
+        if sort not in (None, _CURSOR_SORT):
+            raise ToolError(f"cursor mode requires sort '{_CURSOR_SORT}'")
+        cursor_created_at, cursor_id = _decode_cursor(cursor, priority, per_page)
+        try:
+            with SessionLocal() as db:
+                items, has_next_page = todo_service.get_todos_after_cursor(
+                    db,
+                    per_page=per_page,
+                    priority=priority_enum,
+                    cursor_created_at=cursor_created_at,
+                    cursor_id=cursor_id,
+                )
+                serialized = [_serialize_todo(t) for t in items]
+        except Exception as exc:
+            raise ToolError(str(exc)) from exc
+        next_cursor = _encode_cursor(items[-1], priority, per_page) if has_next_page else None
+        return json.dumps({"items": serialized, "per_page": per_page, "next_cursor": next_cursor})
 
     try:
         with SessionLocal() as db:
             items, has_next_page = todo_service.get_todos(
-                db, page=page, per_page=per_page, sort=sort, priority=priority_enum
+                db,
+                page=page or 1,
+                per_page=per_page,
+                sort=sort or "due_at:asc,priority:desc",
+                priority=priority_enum,
             )
             serialized = [_serialize_todo(t) for t in items]
     except Exception as exc:
@@ -110,7 +208,7 @@ def list_todos(
     return json.dumps(
         {
             "items": serialized,
-            "page": page,
+            "page": page or 1,
             "per_page": per_page,
             "has_next_page": has_next_page,
         }
@@ -158,13 +256,18 @@ def search_todos(query: str, limit: int = 5) -> str:
     return json.dumps([_serialize_todo(t) for t in items])
 
 
-@mcp_server.tool()
-def create_todo(
-    title: str,
-    description: str | None = None,
-    status: str | None = None,
-    priority: str | None = None,
-    due_at: str | None = None,
+@mcp_server.tool(
+    title="Create Todo",
+    description="Create a Todo and report progress to capable MCP clients.",
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False),
+)
+async def create_todo(
+    title: Annotated[str, Field(title="Title", description="Required nonblank Todo title.", json_schema_extra={"minLength": 1})],
+    description: Annotated[str | None, Field(title="Description", description="Optional Todo detail, at most 1000 characters.", json_schema_extra={"maxLength": 1000})] = None,
+    status: Annotated[str | None, Field(title="Status", description="Optional status: created, inprogress, or completed.")] = None,
+    priority: Annotated[str | None, Field(title="Priority", description="Optional priority: urgent, high, medium, or low.")] = None,
+    due_at: Annotated[str | None, Field(title="Due date", description="Optional ISO-8601 due date-time.")] = None,
+    ctx: Context | None = None,
 ) -> str:
     """Create a new todo item in the database.
 
@@ -201,24 +304,31 @@ def create_todo(
         create_kwargs["priority"] = priority_enum
 
     payload = TodoCreate(**create_kwargs)
+    await _await_demo_delay(ctx)
     try:
-        with SessionLocal() as db:
-            todo = todo_service.create_todo(db, payload)
-            result = _serialize_todo(todo)
+        todo = await asyncio.to_thread(
+            _with_session, lambda db: todo_service.create_todo(db, payload)
+        )
+        result = _serialize_todo(todo)
     except Exception as exc:
         raise ToolError(str(exc)) from exc
-
+    await _report_progress(ctx, 3, "Todo created")
     return json.dumps(result)
 
 
-@mcp_server.tool()
-def update_todo(
-    todo_id: int,
-    title: str | None = None,
-    description: str | None = None,
-    status: str | None = None,
-    priority: str | None = None,
-    due_at: str | None = None,
+@mcp_server.tool(
+    title="Update Todo",
+    description="Partially update a Todo and report progress to capable MCP clients.",
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False),
+)
+async def update_todo(
+    todo_id: Annotated[int, Field(title="Todo ID", description="Positive identifier of the Todo to update.", json_schema_extra={"minimum": 1})],
+    title: Annotated[str | None, Field(title="Title", description="Optional nonblank replacement title.", json_schema_extra={"minLength": 1})] = None,
+    description: Annotated[str | None, Field(title="Description", description="Optional replacement detail, at most 1000 characters.", json_schema_extra={"maxLength": 1000})] = None,
+    status: Annotated[str | None, Field(title="Status", description="Optional status: created, inprogress, or completed.")] = None,
+    priority: Annotated[str | None, Field(title="Priority", description="Optional priority: urgent, high, medium, or low.")] = None,
+    due_at: Annotated[str | None, Field(title="Due date", description="Optional ISO-8601 replacement due date-time.")] = None,
+    ctx: Context | None = None,
 ) -> str:
     """Update fields of an existing todo item.
 
@@ -262,19 +372,29 @@ def update_todo(
         update_kwargs["due_at"] = due_at_dt
 
     payload = TodoUpdate(**update_kwargs)
+    await _await_demo_delay(ctx)
     try:
-        with SessionLocal() as db:
-            todo = todo_service.update_todo(db, todo_id, payload)
+        todo = await asyncio.to_thread(
+            _with_session, lambda db: todo_service.update_todo(db, todo_id, payload)
+        )
     except Exception as exc:
         raise ToolError(str(exc)) from exc
 
     if todo is None:
         raise ToolError(f"Todo with id {todo_id} not found")
+    await _report_progress(ctx, 3, "Todo updated")
     return json.dumps(_serialize_todo(todo))
 
 
-@mcp_server.tool()
-def delete_todo(todo_id: int) -> str:
+@mcp_server.tool(
+    title="Delete Todo",
+    description="Permanently delete a Todo and report progress to capable MCP clients.",
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
+)
+async def delete_todo(
+    todo_id: Annotated[int, Field(title="Todo ID", description="Positive identifier of the Todo to delete.", json_schema_extra={"minimum": 1})],
+    ctx: Context | None = None,
+) -> str:
     """Permanently delete a todo item by ID.
 
     Args:
@@ -283,14 +403,17 @@ def delete_todo(todo_id: int) -> str:
     Returns:
         JSON confirmation object on success.
     """
+    await _await_demo_delay(ctx)
     try:
-        with SessionLocal() as db:
-            deleted = todo_service.delete_todo(db, todo_id)
+        deleted = await asyncio.to_thread(
+            _with_session, lambda db: todo_service.delete_todo(db, todo_id)
+        )
     except Exception as exc:
         raise ToolError(str(exc)) from exc
 
     if not deleted:
         raise ToolError(f"Todo with id {todo_id} not found")
+    await _report_progress(ctx, 3, "Todo deleted")
     return json.dumps({"success": True, "message": f"Todo {todo_id} deleted successfully"})
 
 
