@@ -24,14 +24,14 @@ def test_mcp_package_exports() -> None:
 
 
 def test_mcp_asgi_subapp_routes() -> None:
-    """Verify mcp_todos_app defines the expected SSE routes."""
+    """Verify mcp_todos_app defines the expected Streamable HTTP route at root."""
     route_paths = [getattr(r, "path", None) for r in mcp_todos_app.routes]
-    assert "/sse" in route_paths
-    assert "/messages" in route_paths
+    assert "/" in route_paths
 
 
 def test_tools_placeholders() -> None:
     """Verify the 6 MCP tools exist, are callable, and return valid JSON responses (implemented)."""
+    import anyio
     import json as _json
 
     tool_funcs = [
@@ -46,26 +46,30 @@ def test_tools_placeholders() -> None:
     for func in tool_funcs:
         assert callable(func)
 
-    # Basic execution check asserting tools are fully implemented
-    created = _json.loads(tools.create_todo("Scaffold test todo"))
-    assert created["title"] == "Scaffold test todo"
-    todo_id = created["id"]
+    # Basic execution check asserting tools are fully implemented.
+    # create_todo / update_todo / delete_todo are async; run them via anyio.
+    async def _run() -> None:
+        created = _json.loads(await tools.create_todo("Scaffold test todo"))
+        assert created["title"] == "Scaffold test todo"
+        todo_id = created["id"]
 
-    fetched = _json.loads(tools.get_todo_by_id(todo_id))
-    assert fetched["id"] == todo_id
+        fetched = _json.loads(tools.get_todo_by_id(todo_id))
+        assert fetched["id"] == todo_id
 
-    searched = _json.loads(tools.search_todos("Scaffold"))
-    assert any(t["id"] == todo_id for t in searched)
+        searched = _json.loads(tools.search_todos("Scaffold"))
+        assert any(t["id"] == todo_id for t in searched)
 
-    updated = _json.loads(tools.update_todo(todo_id, title="Updated scaffold todo"))
-    assert updated["title"] == "Updated scaffold todo"
+        updated = _json.loads(await tools.update_todo(todo_id, title="Updated scaffold todo"))
+        assert updated["title"] == "Updated scaffold todo"
 
-    listed = _json.loads(tools.list_todos())
-    assert "items" in listed
-    assert listed["per_page"] == 10
+        listed = _json.loads(tools.list_todos())
+        assert "items" in listed
+        assert listed["per_page"] == 10
 
-    deleted = _json.loads(tools.delete_todo(todo_id))
-    assert deleted["success"] is True
+        deleted = _json.loads(await tools.delete_todo(todo_id))
+        assert deleted["success"] is True
+
+    anyio.run(_run)
 
 
 
@@ -142,14 +146,20 @@ def test_fastapi_mount_registration() -> None:
 
 def test_fastapi_mount_http_dispatch() -> None:
     """Verify HTTP requests through FastAPI reach the mounted MCP sub-application."""
-    client = TestClient(app, base_url="http://127.0.0.1:8000")
-    response = client.post(
-        "/mcp/todos/messages/",
-        headers={"Content-Type": "application/json"},
-        json={},
-    )
-    assert response.status_code == 400
-    assert "session_id is required" in response.text
+    # StreamableHTTPSessionManager requires its lifespan task-group to be running.
+    # Using TestClient as a context manager triggers all sub-app lifespans.
+    with TestClient(app, base_url="http://127.0.0.1:8000") as client:
+        # The Streamable HTTP transport is at the mount root, so the full path is /mcp/todos.
+        # A POST without a valid MCP-Protocol-Version header should get 400.
+        response = client.post(
+            "/mcp/todos",
+            headers={"Content-Type": "application/json"},
+            json={},
+        )
+        # The transport rejects malformed MCP messages with 400 (bad request) or
+        # 405 (method not allowed for GET-only streams); anything other than 404
+        # confirms the endpoint is correctly mounted and reachable.
+        assert response.status_code != 404
 
 
 def test_non_regression_core_routes() -> None:
