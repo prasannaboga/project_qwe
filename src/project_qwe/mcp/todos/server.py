@@ -37,6 +37,7 @@ _dev_security = TransportSecuritySettings(
 # which FastAPI propagates automatically when the sub-app is mounted.
 mcp_todos_app: Starlette = mcp_server.streamable_http_app(
     streamable_http_path="/",
+    stateless_http=True,
     transport_security=_dev_security,
 )
 
