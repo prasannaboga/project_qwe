@@ -215,8 +215,21 @@ def list_todos(
     )
 
 
-@mcp_server.tool()
-def get_todo_by_id(todo_id: int) -> str:
+@mcp_server.tool(
+    title="Get Todo By ID",
+    description="Fetch complete details of a specific todo item by its unique integer identifier.",
+    annotations=ToolAnnotations(read_only_hint=True, idempotent_hint=True),
+)
+def get_todo_by_id(
+    todo_id: Annotated[
+        int,
+        Field(
+            title="Todo ID",
+            description="Unique positive integer identifier of the todo item to retrieve.",
+            json_schema_extra={"minimum": 1},
+        ),
+    ],
+) -> str:
     """Fetch complete details of a specific todo item by its unique integer identifier.
 
     Args:
@@ -236,8 +249,29 @@ def get_todo_by_id(todo_id: int) -> str:
     return json.dumps(_serialize_todo(todo))
 
 
-@mcp_server.tool()
-def search_todos(query: str, limit: int = 5) -> str:
+@mcp_server.tool(
+    title="Search Todos",
+    description="Search for todo items matching text in their title or description.",
+    annotations=ToolAnnotations(read_only_hint=True, idempotent_hint=True),
+)
+def search_todos(
+    query: Annotated[
+        str,
+        Field(
+            title="Search Query",
+            description="Keywords to match (case-insensitive substring, min length 1).",
+            json_schema_extra={"minLength": 1},
+        ),
+    ],
+    limit: Annotated[
+        int,
+        Field(
+            title="Limit",
+            description="Maximum results to return from 1 through 20.",
+            json_schema_extra={"minimum": 1, "maximum": 20},
+        ),
+    ] = 5,
+) -> str:
     """Search for todo items matching text in their title or description.
 
     Args:
@@ -389,7 +423,7 @@ async def update_todo(
 @mcp_server.tool(
     title="Delete Todo",
     description="Permanently delete a Todo and report progress to capable MCP clients.",
-    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True),
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False),
 )
 async def delete_todo(
     todo_id: Annotated[int, Field(title="Todo ID", description="Positive identifier of the Todo to delete.", json_schema_extra={"minimum": 1})],
