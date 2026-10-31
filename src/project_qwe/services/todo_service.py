@@ -1,6 +1,8 @@
 from collections.abc import Sequence
 
-from sqlalchemy import case, func, or_, select
+from datetime import datetime
+
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from project_qwe.models.todo import Todo, TodoPriority, TodoStatus
@@ -161,6 +163,40 @@ def get_todos(
     items = results[:per_page]
 
     return items, has_next_page
+
+
+def get_todos_after_cursor(
+    db: Session,
+    *,
+    per_page: int,
+    priority: TodoPriority | None = None,
+    cursor_created_at: datetime | None = None,
+    cursor_id: int | None = None,
+) -> tuple[Sequence[Todo], bool]:
+    """Return one keyset-paginated Todo page in created-at descending order.
+
+    The optional cursor boundary is exclusive, so a stable collection has neither
+    duplicates nor gaps while a client follows returned page tokens.
+    """
+    if per_page < 5 or per_page > 20:
+        raise ValueError("per_page must be between 5 and 20")
+    if (cursor_created_at is None) != (cursor_id is None):
+        raise ValueError("cursor timestamp and id must be supplied together")
+
+    stmt = select(Todo)
+    if priority is not None:
+        stmt = stmt.where(Todo.priority == priority)
+    if cursor_created_at is not None and cursor_id is not None:
+        stmt = stmt.where(
+            or_(
+                Todo.created_at < cursor_created_at,
+                and_(Todo.created_at == cursor_created_at, Todo.id < cursor_id),
+            )
+        )
+    results = db.scalars(
+        stmt.order_by(Todo.created_at.desc(), Todo.id.desc()).limit(per_page + 1)
+    ).all()
+    return results[:per_page], len(results) > per_page
 
 
 def search_todos(db: Session, query: str, limit: int = 5) -> Sequence[Todo]:

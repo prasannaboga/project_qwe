@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from mcp.server.mcpserver.exceptions import ResourceError, ResourceNotFoundError
+from mcp.types import Annotations
 
 from project_qwe.config.database import SessionLocal
 from project_qwe.mcp.todos.server import mcp_server
@@ -71,7 +72,14 @@ def items() -> str:
     return json.dumps(serialized)
 
 
-@mcp_server.resource("todo://items/{id}", mime_type="application/json")
+@mcp_server.resource(
+    "todo://items/{id}",
+    name="todo-by-id",
+    title="Todo by ID",
+    description="Read one Todo as an application/json TodoResponse by its positive integer ID.",
+    mime_type="application/json",
+    annotations=Annotations(audience=["assistant"]),
+)
 def items_by_id(id: int) -> str:
     """Read details for a single task by ID context feed (todo://items/{id}).
 
@@ -88,6 +96,8 @@ def items_by_id(id: int) -> str:
         todo_id = int(id)
     except (ValueError, TypeError):
         raise ResourceError(f"Invalid todo id '{id}'. Must be an integer.")
+    if todo_id < 1:
+        raise ResourceError(f"Invalid todo id '{id}'. Must be a positive integer.")
 
     try:
         with SessionLocal() as db:

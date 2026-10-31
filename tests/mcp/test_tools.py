@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import json
 from pathlib import Path
 
@@ -22,6 +23,20 @@ from project_qwe.services import todo_service
 def _make_todo(db_session, **kwargs):
     """Create a todo directly via service using the test db_session."""
     return todo_service.create_todo(db_session, TodoCreate(**kwargs))
+
+
+@pytest.fixture(autouse=True)
+def run_async_mutation_tools(monkeypatch):
+    """Keep direct legacy unit calls compatible with async MCP write handlers."""
+    for name in ("create_todo", "update_todo", "delete_todo"):
+        original = getattr(mcp_tools, name)
+        monkeypatch.setattr(
+            mcp_tools,
+            name,
+            lambda *args, _original=original, **kwargs: asyncio.run(
+                _original(*args, **kwargs)
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
