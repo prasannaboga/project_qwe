@@ -450,6 +450,33 @@ async def delete_todo(
     await _report_progress(ctx, 3, "Todo deleted")
     return json.dumps({"success": True, "message": f"Todo {todo_id} deleted successfully"})
 
+@mcp_server.tool()
+async def test_report_progress(ctx: Context) -> dict:
+    """Test MCP progress notifications with five messages."""
+
+    messages = [
+        "Starting progress notification test",
+        "Step 1/4: Validating test input",
+        "Step 2/4: Processing test data",
+        "Step 3/4: Verifying test results",
+        "Step 4/4: Progress notification test completed",
+    ]
+
+    total = len(messages)
+
+    for progress, message in enumerate(messages, start=1):
+        await ctx.report_progress(
+            progress=progress,
+            total=total,
+            message=message,
+        )
+        await asyncio.sleep(5)
+
+    return {
+        "success": True,
+        "message": "Progress notification test completed",
+        "notifications_sent": total,
+    }
 
 __all__ = [
     "list_todos",
@@ -458,4 +485,5 @@ __all__ = [
     "create_todo",
     "update_todo",
     "delete_todo",
+    "test_report_progress"
 ]
