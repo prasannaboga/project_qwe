@@ -6,13 +6,29 @@ managers. No ORM model imports are permitted in this module (AD-1).
 
 from __future__ import annotations
 
+from typing import Annotated
+
+from pydantic import Field
+
 from project_qwe.config.database import SessionLocal
 from project_qwe.mcp.todos.server import mcp_server
 from project_qwe.services import todo_service
 
 
-@mcp_server.prompt("daily_planning", description="Guided prompt for daily planning with optional focus area.")
-def daily_planning(focus_area: str | None = None) -> str:
+@mcp_server.prompt(
+    "daily_planning",
+    title="Daily Planning",
+    description="Guided prompt for daily planning with optional focus area.",
+)
+def daily_planning(
+    focus_area: Annotated[
+        str | None,
+        Field(
+            title="Focus Area",
+            description="Optional domain or topic to emphasize during planning.",
+        ),
+    ] = None,
+) -> str:
     """Guided prompt for daily planning with optional focus area.
 
     Args:
@@ -57,8 +73,21 @@ def daily_planning(focus_area: str | None = None) -> str:
     return "\n".join(lines)
 
 
-@mcp_server.prompt("triage_backlog", description="Guided prompt for evaluating backlog items.")
-def triage_backlog(limit: int = 20) -> str:
+@mcp_server.prompt(
+    "triage_backlog",
+    title="Triage Backlog",
+    description="Guided prompt for evaluating backlog items.",
+)
+def triage_backlog(
+    limit: Annotated[
+        int,
+        Field(
+            title="Limit",
+            description="Maximum number of backlog items to inspect (1-50, default 20).",
+            json_schema_extra={"minimum": 1, "maximum": 50},
+        ),
+    ] = 20,
+) -> str:
     """Guided prompt for evaluating backlog items.
 
     Args:
@@ -114,8 +143,21 @@ def triage_backlog(limit: int = 20) -> str:
     return "\n".join(lines)
 
 
-@mcp_server.prompt("task_breakdown", description="Guided prompt for decomposing a todo into sub-tasks.")
-def task_breakdown(todo_id: int) -> str:
+@mcp_server.prompt(
+    "task_breakdown",
+    title="Task Breakdown",
+    description="Guided prompt for decomposing a todo into sub-tasks.",
+)
+def task_breakdown(
+    todo_id: Annotated[
+        int,
+        Field(
+            title="Todo ID",
+            description="Required positive integer ID of the parent todo to decompose.",
+            json_schema_extra={"minimum": 1},
+        ),
+    ],
+) -> str:
     """Guided prompt for decomposing a todo into sub-tasks.
 
     Args:

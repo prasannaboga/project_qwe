@@ -33,6 +33,19 @@ from project_qwe.services import todo_service
 # Fixtures & Test Setup
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def run_async_mutation_tools(monkeypatch):
+    """Keep direct unit calls compatible while SSE uses registered async handlers."""
+    for name in ("create_todo", "update_todo", "delete_todo"):
+        original = getattr(mcp_tools, name)
+        monkeypatch.setattr(
+            mcp_tools,
+            name,
+            lambda *args, _original=original, **kwargs: asyncio.run(
+                _original(*args, **kwargs)
+            ),
+        )
+
 def _get_free_port() -> int:
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
