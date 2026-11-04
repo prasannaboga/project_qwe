@@ -8,3 +8,5 @@ mynotes.md
 .env
 !.env.example
 .serena
+test-results/*
+.DS_Store
