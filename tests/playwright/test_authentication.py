@@ -11,30 +11,35 @@ All test credentials and secrets are loaded from environment configuration (.env
 """
 
 import base64
+from pathlib import Path
 
+from dotenv import dotenv_values, find_dotenv
 from playwright.sync_api import APIRequestContext, Error as PlaywrightError, Playwright
 import pytest
 
-from project_qwe.config.settings import settings
-
 # ---------------------------------------------------------------------------
-# Credentials loaded from environment configuration (.env.test via settings)
+# Credentials loaded directly from .env.test using python-dotenv
 # ---------------------------------------------------------------------------
 
-ADMIN_TOKEN = settings.TEST_ADMIN_TOKEN
-ADMIN_API_KEY = settings.TEST_ADMIN_API_KEY
-ADMIN_USERNAME = settings.TEST_ADMIN_USERNAME
-ADMIN_PASSWORD = settings.TEST_ADMIN_PASSWORD
+_env_test_path = find_dotenv(".env.test") or str(
+    Path(__file__).resolve().parents[2] / ".env.test"
+)
+_test_env = dotenv_values(_env_test_path)
 
-LEARNER_TOKEN = settings.TEST_LEARNER_TOKEN
-LEARNER_API_KEY = settings.TEST_LEARNER_API_KEY
-LEARNER_USERNAME = settings.TEST_LEARNER_USERNAME
-LEARNER_PASSWORD = settings.TEST_LEARNER_PASSWORD
+ADMIN_TOKEN = _test_env["TEST_ADMIN_TOKEN"]
+ADMIN_API_KEY = _test_env["TEST_ADMIN_API_KEY"]
+ADMIN_USERNAME = _test_env["TEST_ADMIN_USERNAME"]
+ADMIN_PASSWORD = _test_env["TEST_ADMIN_PASSWORD"]
 
-INVALID_TOKEN = settings.TEST_INVALID_TOKEN
-INVALID_KEY = settings.TEST_INVALID_KEY
-INVALID_USER = settings.TEST_INVALID_USERNAME
-INVALID_PASS = settings.TEST_INVALID_PASSWORD
+LEARNER_TOKEN = _test_env["TEST_LEARNER_TOKEN"]
+LEARNER_API_KEY = _test_env["TEST_LEARNER_API_KEY"]
+LEARNER_USERNAME = _test_env["TEST_LEARNER_USERNAME"]
+LEARNER_PASSWORD = _test_env["TEST_LEARNER_PASSWORD"]
+
+INVALID_TOKEN = _test_env["TEST_INVALID_TOKEN"]
+INVALID_KEY = _test_env["TEST_INVALID_KEY"]
+INVALID_USER = _test_env["TEST_INVALID_USERNAME"]
+INVALID_PASS = _test_env["TEST_INVALID_PASSWORD"]
 
 
 # ===========================================================================
