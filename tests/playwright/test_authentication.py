@@ -1,31 +1,40 @@
-"""Playwright API testing suite for Authentication Demo endpoints.
+"""Playwright API testing suite for Authentication Demo and Role-Based Access Control.
 
-This module demonstrates API testing of multiple authentication mechanisms using
-Playwright's APIRequestContext:
+Demonstrates:
 1. Bearer Token Authentication (Authorization: Bearer <token>)
 2. API Key Authentication (Custom X-API-Key header)
 3. HTTP Basic Authentication (Authorization: Basic <base64> and Playwright http_credentials)
+4. Role-Based Access Control (403 Forbidden: Admin vs Learner)
+5. Comprehensive Error Handling in Playwright (timeouts, error payloads, headers, assertions)
 
-Both request-level authentication and context-level pre-configured authentication
-are demonstrated, along with positive and negative test cases.
+All test credentials and secrets are loaded from environment configuration (.env.test).
 """
 
 import base64
 
-from playwright.sync_api import APIRequestContext, Playwright
+from playwright.sync_api import APIRequestContext, Error as PlaywrightError, Playwright
+import pytest
 
 from project_qwe.config.settings import settings
 
-# Test credentials loaded from application configuration
-VALID_BEARER_TOKEN = settings.AUTH_DEMO_BEARER_TOKEN
-VALID_API_KEY = settings.AUTH_DEMO_API_KEY
-VALID_BASIC_USER = settings.AUTH_DEMO_BASIC_USERNAME
-VALID_BASIC_PASS = settings.AUTH_DEMO_BASIC_PASSWORD
+# ---------------------------------------------------------------------------
+# Credentials loaded from environment configuration (.env.test via settings)
+# ---------------------------------------------------------------------------
 
-INVALID_TOKEN = "invalid-token-xyz-12345"
-INVALID_KEY = "invalid-api-key-99999"
-INVALID_USER = "wronguser"
-INVALID_PASS = "wrongpassword"
+ADMIN_TOKEN = settings.TEST_ADMIN_TOKEN
+ADMIN_API_KEY = settings.TEST_ADMIN_API_KEY
+ADMIN_USERNAME = settings.TEST_ADMIN_USERNAME
+ADMIN_PASSWORD = settings.TEST_ADMIN_PASSWORD
+
+LEARNER_TOKEN = settings.TEST_LEARNER_TOKEN
+LEARNER_API_KEY = settings.TEST_LEARNER_API_KEY
+LEARNER_USERNAME = settings.TEST_LEARNER_USERNAME
+LEARNER_PASSWORD = settings.TEST_LEARNER_PASSWORD
+
+INVALID_TOKEN = settings.TEST_INVALID_TOKEN
+INVALID_KEY = settings.TEST_INVALID_KEY
+INVALID_USER = settings.TEST_INVALID_USERNAME
+INVALID_PASS = settings.TEST_INVALID_PASSWORD
 
 
 # ===========================================================================
@@ -36,19 +45,17 @@ def test_bearer_auth_valid_token_request_level(api_context: APIRequestContext) -
     """Demonstrate Bearer auth by passing the Authorization header per request."""
     response = api_context.get(
         "/auth-demo/bearer/profile",
-        headers={"Authorization": f"Bearer {VALID_BEARER_TOKEN}"},
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
     )
 
-    # Status and ok assertions
     assert response.status == 200
     assert response.ok is True
 
-    # Body validation
     data = response.json()
-    assert data["username"] == "bearer_user"
-    assert data["email"] == "bearer_user@example.com"
-    assert data["auth_method"] == "bearer"
-    assert data["role"] == "learner"
+    assert data["id"] == 1001
+    assert data["username"] == ADMIN_USERNAME
+    assert data["email"] == "alice.admin@example.com"
+    assert data["role"] == "admin"
 
 
 def test_bearer_auth_missing_token(api_context: APIRequestContext) -> None:
@@ -76,25 +83,23 @@ def test_bearer_auth_invalid_token(api_context: APIRequestContext) -> None:
 def test_bearer_auth_context_level_configuration(
     playwright: Playwright, base_url: str
 ) -> None:
-    """Demonstrate Bearer auth configured globally at APIRequestContext creation.
-
-    Useful when all requests executed by a test suite share the same Bearer token.
-    """
+    """Demonstrate Bearer auth configured globally at APIRequestContext creation."""
     authenticated_context = playwright.request.new_context(
         base_url=base_url,
         extra_http_headers={
-            "Authorization": f"Bearer {VALID_BEARER_TOKEN}",
+            "Authorization": f"Bearer {LEARNER_TOKEN}",
             "Accept": "application/json",
         },
     )
 
     try:
-        # Request does not need to specify headers; context injects them automatically
         response = authenticated_context.get("/auth-demo/bearer/profile")
 
         assert response.status == 200
         assert response.ok is True
-        assert response.json()["auth_method"] == "bearer"
+        data = response.json()
+        assert data["username"] == LEARNER_USERNAME
+        assert data["role"] == "learner"
     finally:
         authenticated_context.dispose()
 
@@ -107,17 +112,16 @@ def test_api_key_auth_valid_key_request_level(api_context: APIRequestContext) ->
     """Demonstrate API key authentication passed via custom X-API-Key request header."""
     response = api_context.get(
         "/auth-demo/api-key/profile",
-        headers={"X-API-Key": VALID_API_KEY},
+        headers={"X-API-Key": ADMIN_API_KEY},
     )
 
     assert response.status == 200
     assert response.ok is True
 
     data = response.json()
-    assert data["username"] == "api_key_user"
-    assert data["email"] == "api_key_user@example.com"
-    assert data["auth_method"] == "api_key"
-    assert data["role"] == "developer"
+    assert data["id"] == 1001
+    assert data["username"] == ADMIN_USERNAME
+    assert data["role"] == "admin"
 
 
 def test_api_key_auth_missing_header(api_context: APIRequestContext) -> None:
@@ -148,7 +152,7 @@ def test_api_key_auth_context_level_configuration(
     authenticated_context = playwright.request.new_context(
         base_url=base_url,
         extra_http_headers={
-            "X-API-Key": VALID_API_KEY,
+            "X-API-Key": LEARNER_API_KEY,
             "Accept": "application/json",
         },
     )
@@ -157,7 +161,7 @@ def test_api_key_auth_context_level_configuration(
         response = authenticated_context.get("/auth-demo/api-key/profile")
         assert response.status == 200
         assert response.ok is True
-        assert response.json()["auth_method"] == "api_key"
+        assert response.json()["username"] == LEARNER_USERNAME
     finally:
         authenticated_context.dispose()
 
@@ -170,7 +174,7 @@ def test_basic_auth_valid_credentials_request_header(
     api_context: APIRequestContext,
 ) -> None:
     """Demonstrate Basic auth by formatting and sending 'Authorization: Basic <base64>'."""
-    credentials_raw = f"{VALID_BASIC_USER}:{VALID_BASIC_PASS}"
+    credentials_raw = f"{ADMIN_USERNAME}:{ADMIN_PASSWORD}"
     encoded = base64.b64encode(credentials_raw.encode("utf-8")).decode("utf-8")
 
     response = api_context.get(
@@ -182,25 +186,19 @@ def test_basic_auth_valid_credentials_request_header(
     assert response.ok is True
 
     data = response.json()
-    assert data["username"] == VALID_BASIC_USER
-    assert data["email"] == f"{VALID_BASIC_USER}@example.com"
-    assert data["auth_method"] == "basic"
-    assert data["role"] == "learner"
+    assert data["username"] == ADMIN_USERNAME
+    assert data["role"] == "admin"
 
 
 def test_basic_auth_valid_credentials_playwright_http_credentials(
     playwright: Playwright, base_url: str
 ) -> None:
-    """Demonstrate Playwright's native `http_credentials` APIRequestContext option.
-
-    Playwright automatically encodes and attaches HTTP Basic authentication headers
-    for matching hosts when `http_credentials={'username': ..., 'password': ...}` is supplied.
-    """
+    """Demonstrate Playwright's native `http_credentials` APIRequestContext option."""
     authenticated_context = playwright.request.new_context(
         base_url=base_url,
         http_credentials={
-            "username": VALID_BASIC_USER,
-            "password": VALID_BASIC_PASS,
+            "username": LEARNER_USERNAME,
+            "password": LEARNER_PASSWORD,
         },
     )
 
@@ -209,8 +207,8 @@ def test_basic_auth_valid_credentials_playwright_http_credentials(
 
         assert response.status == 200
         assert response.ok is True
-        assert response.json()["username"] == VALID_BASIC_USER
-        assert response.json()["auth_method"] == "basic"
+        assert response.json()["username"] == LEARNER_USERNAME
+        assert response.json()["role"] == "learner"
     finally:
         authenticated_context.dispose()
 
@@ -227,7 +225,7 @@ def test_basic_auth_missing_credentials(api_context: APIRequestContext) -> None:
 
 def test_basic_auth_invalid_username(api_context: APIRequestContext) -> None:
     """Demonstrate negative test when the username is incorrect."""
-    credentials_raw = f"{INVALID_USER}:{VALID_BASIC_PASS}"
+    credentials_raw = f"{INVALID_USER}:{ADMIN_PASSWORD}"
     encoded = base64.b64encode(credentials_raw.encode("utf-8")).decode("utf-8")
 
     response = api_context.get(
@@ -242,7 +240,7 @@ def test_basic_auth_invalid_username(api_context: APIRequestContext) -> None:
 
 def test_basic_auth_invalid_password(api_context: APIRequestContext) -> None:
     """Demonstrate negative test when the password is incorrect."""
-    credentials_raw = f"{VALID_BASIC_USER}:{INVALID_PASS}"
+    credentials_raw = f"{ADMIN_USERNAME}:{INVALID_PASS}"
     encoded = base64.b64encode(credentials_raw.encode("utf-8")).decode("utf-8")
 
     response = api_context.get(
@@ -253,3 +251,151 @@ def test_basic_auth_invalid_password(api_context: APIRequestContext) -> None:
     assert response.status == 401
     assert response.ok is False
     assert "Invalid HTTP Basic credentials" in response.json()["detail"]
+
+
+# ===========================================================================
+# 4. Role-Based Access Control (403 Forbidden: Admin vs Learner)
+# ===========================================================================
+
+def test_admin_can_access_admin_dashboard(api_context: APIRequestContext) -> None:
+    """Demonstrate that users with the 'admin' role are granted access (200 OK)."""
+    response = api_context.get(
+        "/auth-demo/admin/dashboard",
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
+    )
+
+    assert response.status == 200
+    assert response.ok is True
+
+    data = response.json()
+    assert data["role"] == "admin"
+    assert data["access"] == "granted"
+    assert ADMIN_USERNAME in data["message"]
+
+
+def test_learner_forbidden_from_admin_dashboard(
+    api_context: APIRequestContext,
+) -> None:
+    """Demonstrate that authenticated users without the 'admin' role receive 403 Forbidden.
+
+    Highlights the critical difference between:
+    - 401 Unauthorized: Authentication failure (unauthenticated)
+    - 403 Forbidden: Authorization failure (authenticated, but lacking required permissions)
+    """
+    response = api_context.get(
+        "/auth-demo/admin/dashboard",
+        headers={"Authorization": f"Bearer {LEARNER_TOKEN}"},
+    )
+
+    # 403 Forbidden status validation
+    assert response.status == 403
+    assert response.ok is False
+
+    # Detailed error message validation
+    detail = response.json()["detail"]
+    assert "Access forbidden" in detail
+    assert "requires 'admin' role" in detail
+    assert f"user '{LEARNER_USERNAME}' has role 'learner'" in detail
+
+
+def test_unauthenticated_request_to_admin_dashboard_returns_401(
+    api_context: APIRequestContext,
+) -> None:
+    """Demonstrate that unauthenticated requests to protected endpoints return 401, not 403."""
+    response = api_context.get("/auth-demo/admin/dashboard")
+
+    # Must be 401 Unauthorized because credentials were not supplied at all
+    assert response.status == 401
+    assert response.ok is False
+    assert "Missing Authorization header" in response.json()["detail"]
+
+
+# ===========================================================================
+# 5. Playwright Error Handling Examples
+# ===========================================================================
+
+def test_error_handling_graceful_status_and_body_inspection(
+    api_context: APIRequestContext,
+) -> None:
+    """Demonstrate robust error inspection patterns with Playwright APIResponse.
+
+    Shows how to:
+    1. Guard against assuming responses are always 2xx via `response.ok`.
+    2. Safely inspect error payloads with fallback.
+    3. Assert structured error fields like `detail`.
+    """
+    response = api_context.get(
+        "/auth-demo/admin/dashboard",
+        headers={"Authorization": f"Bearer {LEARNER_TOKEN}"},
+    )
+
+    # 1. Verify expected failure
+    if not response.ok:
+        assert response.status == 403
+        try:
+            payload = response.json()
+            assert "detail" in payload
+            assert isinstance(payload["detail"], str)
+        except Exception as exc:
+            pytest.fail(f"Expected JSON error response, but failed to parse: {exc}")
+    else:
+        pytest.fail("Expected 403 Forbidden, but received 2xx OK")
+
+
+def test_error_handling_inspect_www_authenticate_header(
+    api_context: APIRequestContext,
+) -> None:
+    """Demonstrate error inspection for HTTP challenge headers (RFC 7235).
+
+    When returning 401 Unauthorized, servers must include a `WWW-Authenticate` header.
+    Playwright makes it easy to inspect both dictionary and array representations of headers.
+    """
+    response = api_context.get("/auth-demo/bearer/profile")
+
+    assert response.status == 401
+
+    # Dictionary lookup (case-insensitive in Playwright)
+    www_auth_header = response.headers.get("www-authenticate")
+    assert www_auth_header is not None
+    assert "bearer" in www_auth_header.lower()
+
+    # Array representation inspection
+    headers_list = response.headers_array
+    auth_headers = [h for h in headers_list if h["name"].lower() == "www-authenticate"]
+    assert len(auth_headers) >= 1
+    assert "bearer" in auth_headers[0]["value"].lower()
+
+
+def test_error_handling_playwright_request_timeout(playwright: Playwright) -> None:
+    """Demonstrate handling Playwright request timeouts with `pytest.raises`.
+
+    When an endpoint hangs or exceeds the configured timeout threshold,
+    Playwright aborts the network request and raises `playwright.sync_api.Error`.
+    """
+    timeout_context = playwright.request.new_context(
+        timeout=100,  # 100 milliseconds
+    )
+
+    try:
+        # Requesting a non-routable address (TEST-NET) with a short timeout guarantees a timeout error
+        with pytest.raises(PlaywrightError) as exc_info:
+            timeout_context.get("http://10.255.255.1:81")
+
+        assert "Timeout" in str(exc_info.value) or "timed out" in str(exc_info.value)
+    finally:
+        timeout_context.dispose()
+
+
+def test_error_handling_unsupported_method_returns_405(
+    api_context: APIRequestContext,
+) -> None:
+    """Demonstrate error handling for 405 Method Not Allowed.
+
+    Sending an unsupported HTTP method (e.g., POST to a GET-only endpoint)
+    allows tests to assert on standard HTTP status responses.
+    """
+    response = api_context.post("/auth-demo/admin/dashboard", data={})
+
+    assert response.status == 405
+    assert response.ok is False
+    assert "Method Not Allowed" in response.status_text or response.status == 405

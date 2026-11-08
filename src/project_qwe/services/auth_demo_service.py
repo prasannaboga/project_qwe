@@ -12,6 +12,8 @@ import secrets
 
 from pydantic import BaseModel
 
+from project_qwe.config.settings import settings
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_USERS_FILE = PROJECT_ROOT / "data" / "demo_users_details.csv"
 
@@ -41,7 +43,9 @@ class AuthDemoService:
 
     def __init__(self, users_file: str | Path | None = None) -> None:
         if users_file is None:
-            self._users_file = DEFAULT_USERS_FILE
+            configured = getattr(settings, "USERS_CSV_FILE", "data/demo_users_details.csv")
+            path = Path(configured)
+            self._users_file = path if path.is_absolute() else PROJECT_ROOT / path
         else:
             path = Path(users_file)
             self._users_file = path if path.is_absolute() else PROJECT_ROOT / path

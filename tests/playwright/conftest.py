@@ -2,6 +2,10 @@
 
 from collections.abc import Generator
 import os
+
+# Ensure test environment mode loads .env.test
+os.environ.setdefault("ENV", "test")
+
 import socket
 import threading
 import time
