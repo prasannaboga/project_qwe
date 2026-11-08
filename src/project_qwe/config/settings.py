@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///data/development.sqlite"
     MCP_TODOS_PROGRESS_DELAY_SECONDS: int = 0
 
+    # Demo authentication credentials (test defaults, overrideable via environment)
+    AUTH_DEMO_BEARER_TOKEN: str = "demo-bearer-token-secret"
+    AUTH_DEMO_API_KEY: str = "demo-api-key-secret"
+    AUTH_DEMO_BASIC_USERNAME: str = "demouser"
+    AUTH_DEMO_BASIC_PASSWORD: str = "demopassword123"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
