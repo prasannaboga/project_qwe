@@ -10,3 +10,4 @@ mynotes.md
 .serena
 test-results/*
 .DS_Store
+.env.test
