@@ -100,10 +100,10 @@ async def validate_and_save_file(file: UploadFile) -> dict[str, Any]:
                 detail="File content is not valid UTF-8 text.",
             )
 
-    # Persist file using a generated UUID
+    # Persist file using a generated UUID, keeping the original extension
     upload_dir = ensure_upload_dir()
     file_id = uuid.uuid4().hex
-    binary_path = upload_dir / f"{file_id}.bin"
+    actual_path = upload_dir / f"{file_id}{file_ext}"
     meta_path = upload_dir / f"{file_id}.json"
 
     metadata = {
@@ -111,15 +111,16 @@ async def validate_and_save_file(file: UploadFile) -> dict[str, Any]:
         "filename": Path(original_filename).name,  # Sanitize to basename
         "content_type": expected_mime,
         "size": len(content),
+        "ext": file_ext,
     }
 
     try:
-        binary_path.write_bytes(content)
+        actual_path.write_bytes(content)
         meta_path.write_text(json.dumps(metadata), encoding="utf-8")
     except Exception as exc:
         # Clean up partial writes if an unexpected error occurs
-        if binary_path.exists():
-            binary_path.unlink()
+        if actual_path.exists():
+            actual_path.unlink()
         if meta_path.exists():
             meta_path.unlink()
         raise HTTPException(
@@ -131,12 +132,13 @@ async def validate_and_save_file(file: UploadFile) -> dict[str, Any]:
 
 
 def get_file_for_download(file_id: str) -> tuple[Path, str, str]:
-    """Locate an uploaded file by ID and return its binary path, original filename, and media type.
+    """Locate an uploaded file by ID and return its actual file path, original filename, and media type.
 
-    Validates file_id to prevent directory traversal and verifies both binary and metadata exist.
+    Validates file_id to prevent directory traversal and verifies both the file and metadata exist.
+    The file is stored with its original extension (e.g. .txt, .jpg) rather than as .bin.
 
     Returns:
-        tuple of (binary_path, original_filename, content_type)
+        tuple of (file_path, original_filename, content_type)
 
     Raises:
         HTTPException(404): if file is not found or file_id format is invalid.
@@ -148,12 +150,10 @@ def get_file_for_download(file_id: str) -> tuple[Path, str, str]:
         )
 
     upload_dir = ensure_upload_dir()
-    binary_path = upload_dir / f"{file_id}.bin"
     meta_path = upload_dir / f"{file_id}.json"
 
-    # Prevent path traversal
+    # Prevent path traversal on metadata
     try:
-        binary_path.resolve().relative_to(upload_dir.resolve())
         meta_path.resolve().relative_to(upload_dir.resolve())
     except ValueError:
         raise HTTPException(
@@ -161,7 +161,7 @@ def get_file_for_download(file_id: str) -> tuple[Path, str, str]:
             detail=f"File with id '{file_id}' not found.",
         )
 
-    if not binary_path.is_file() or not meta_path.is_file():
+    if not meta_path.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"File with id '{file_id}' not found.",
@@ -169,30 +169,75 @@ def get_file_for_download(file_id: str) -> tuple[Path, str, str]:
 
     try:
         metadata = json.loads(meta_path.read_text(encoding="utf-8"))
-        filename = metadata.get("filename", f"{file_id}.bin")
+        filename = metadata.get("filename", file_id)
         content_type = metadata.get("content_type", "application/octet-stream")
+        ext = metadata.get("ext", Path(filename).suffix.lower())
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"File metadata for id '{file_id}' is invalid or missing.",
         )
 
-    return binary_path, filename, content_type
+    actual_path = upload_dir / f"{file_id}{ext}"
+
+    # Prevent path traversal on the actual file path
+    try:
+        actual_path.resolve().relative_to(upload_dir.resolve())
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File with id '{file_id}' not found.",
+        )
+
+    if not actual_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File with id '{file_id}' not found.",
+        )
+
+    return actual_path, filename, content_type
 
 
 def delete_file(file_id: str) -> bool:
-    """Delete a file and its metadata if they exist. Useful for test cleanup."""
+    """Delete a file and its metadata if they exist. Useful for test cleanup.
+
+    Reads the stored extension from metadata to find the actual file path.
+    """
     if not SAFE_ID_PATTERN.match(file_id):
         return False
     upload_dir = ensure_upload_dir()
-    binary_path = upload_dir / f"{file_id}.bin"
     meta_path = upload_dir / f"{file_id}.json"
 
     deleted = False
-    if binary_path.exists():
-        binary_path.unlink()
-        deleted = True
+
+    # Determine the actual file extension from stored metadata, if available
+    ext: str | None = None
+    if meta_path.is_file():
+        try:
+            metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+            ext = metadata.get("ext")
+            if ext is None:
+                stored_filename = metadata.get("filename", "")
+                if stored_filename:
+                    ext = Path(stored_filename).suffix.lower()
+        except Exception:
+            pass
+
+    if ext:
+        actual_path = upload_dir / f"{file_id}{ext}"
+        if actual_path.exists():
+            actual_path.unlink()
+            deleted = True
+    else:
+        # Fallback: attempt to remove any known-extension file for this id
+        for fallback_ext in ALLOWED_EXTENSIONS:
+            candidate = upload_dir / f"{file_id}{fallback_ext}"
+            if candidate.exists():
+                candidate.unlink()
+                deleted = True
+
     if meta_path.exists():
         meta_path.unlink()
         deleted = True
+
     return deleted
