@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 data/*.sqlite
+data/uploads/
 mynotes.md
 .env
 !.env.example
