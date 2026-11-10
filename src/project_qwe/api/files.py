@@ -20,7 +20,14 @@ async def upload_file(file: UploadFile = File(...)) -> FileUploadResponse:
     """Accept multipart file upload, validate contents, and persist safely."""
     try:
         metadata = await file_service.validate_and_save_file(file)
-        return FileUploadResponse(**metadata)
+        # "ext" is internal storage metadata (persisted in the sidecar JSON);
+        # it is not part of the public response schema, which forbids extras.
+        return FileUploadResponse(
+            id=metadata["id"],
+            filename=metadata["filename"],
+            content_type=metadata["content_type"],
+            size=metadata["size"],
+        )
     finally:
         await file.close()
 
