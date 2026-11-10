@@ -1,5 +1,3 @@
-"""Service layer handling file storage, validation, and retrieval."""
-
 import json
 from pathlib import Path
 import re
@@ -21,7 +19,6 @@ SAFE_ID_PATTERN = re.compile(r"^[0-9a-fA-F]{32}$")
 
 
 def ensure_upload_dir() -> Path:
-    """Ensure the uploads directory exists and return its path."""
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     return UPLOAD_DIR
 
