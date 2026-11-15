@@ -6,6 +6,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from project_qwe.api.auth_demo import router as auth_demo_router
 from project_qwe.api.files import router as files_router
+from project_qwe.api.session import router as session_router
 from project_qwe.api.todos import router as todos_router
 from project_qwe.mcp.todos.server import mcp_todos_app
 
@@ -47,6 +48,7 @@ app.add_middleware(TrailingSlashMiddleware)
 app.include_router(todos_router)
 app.include_router(auth_demo_router)
 app.include_router(files_router)
+app.include_router(session_router)
 app.mount("/mcp/todos", mcp_todos_app)
 
 

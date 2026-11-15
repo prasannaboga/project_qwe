@@ -142,3 +142,16 @@ class AuthDemoService:
                 if password_valid:
                     return user
         return None
+
+    def authenticate_with_password(
+        self, username: str, password: str
+    ) -> DemoUser | None:
+        """Validate username and password against loaded demo users.
+
+        Uses constant-time comparison on username and SHA-256 password hash.
+
+        Returns:
+            DemoUser if username and password match, None otherwise.
+        """
+        return self.authenticate_basic_credentials(username, password)
+
