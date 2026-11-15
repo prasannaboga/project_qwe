@@ -206,40 +206,73 @@ def test_playwright_clear_cookies(api_context: APIRequestContext) -> None:
 
 
 def test_playwright_add_cookies_manual_injection(
+    playwright: Playwright, base_url: str
+) -> None:
+    """Demonstrate context.add_cookies() by injecting a valid server-issued session into a new context."""
+    # 1. Establish a valid session on the server via Context 1
+    context_1 = playwright.request.new_context(
+        base_url=base_url, extra_http_headers={"Accept": "application/json"}
+    )
+    context_2 = playwright.request.new_context(
+        base_url=base_url, extra_http_headers={"Accept": "application/json"}
+    )
+
+    try:
+        login_res = context_1.post(
+            "/session/login",
+            data={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD},
+        )
+        assert login_res.status == 200
+        cookies = context_1.cookies()
+        session_cookie = next(c for c in cookies if c["name"] == "session_id")
+
+        # 2. Verify Context 2 initially has no cookies and is rejected
+        assert len(context_2.cookies()) == 0
+        unauth_res = context_2.get("/session/me")
+        assert unauth_res.status == 401
+
+        # 3. Manually inject the server-issued session cookie into Context 2 using add_cookies()
+        context_2.add_cookies(
+            [
+                {
+                    "name": "session_id",
+                    "value": session_cookie["value"],
+                    "url": base_url,
+                    "httpOnly": True,
+                    "sameSite": "Lax",
+                }
+            ]
+        )
+
+        # 4. Protected endpoint in Context 2 now succeeds with the injected cookie
+        response = context_2.get("/session/me")
+        assert response.status == 200
+        assert response.json()["username"] == ADMIN_USERNAME
+    finally:
+        context_1.dispose()
+        context_2.dispose()
+
+
+def test_playwright_add_cookies_forged_cookie_rejected(
     api_context: APIRequestContext, base_url: str
 ) -> None:
-    """Demonstrate context.add_cookies() manually injecting a valid server-side session."""
-    # 1. Fetch demo user record
-    from project_qwe.services.auth_demo_service import AuthDemoService
-
-    auth_svc = AuthDemoService()
-    user = auth_svc.authenticate_with_password(ADMIN_USERNAME, ADMIN_PASSWORD)
-    assert user is not None
-
-    # 2. Create session directly on server
-    server_session = session_service.create_session(user)
-
-    # 3. Manually add cookie to Playwright context using parsed domain
-    parsed = urlparse(base_url)
-    domain = parsed.hostname or "127.0.0.1"
-
+    """Demonstrate context.add_cookies() with a forged session ID is rejected by the server."""
     api_context.add_cookies(
         [
             {
                 "name": "session_id",
-                "value": server_session.session_id,
-                "domain": domain,
-                "path": "/",
+                "value": "forged_non_existent_session_id_xyz123",
+                "url": base_url,
                 "httpOnly": True,
                 "sameSite": "Lax",
             }
         ]
     )
 
-    # 4. Call protected endpoint to verify injection succeeded
     response = api_context.get("/session/me")
-    assert response.status == 200
-    assert response.json()["username"] == ADMIN_USERNAME
+    assert response.status == 401
+    assert "not authenticated" in response.json()["detail"].lower()
+
 
 
 def test_session_refresh_extends_expiration(api_context: APIRequestContext) -> None:
@@ -335,22 +368,23 @@ def test_session_expiration_with_short_ttl(api_context: APIRequestContext) -> No
     assert "expired" in expired_res.json()["detail"].lower()
 
 
-def test_server_side_forced_expiration(api_context: APIRequestContext) -> None:
-    """Validate immediate session rejection via server-side expiration mechanism."""
-    # Login
-    api_context.post(
+def test_expired_session_refresh_rejected(api_context: APIRequestContext) -> None:
+    """Validate that attempting to refresh an expired session returns 401 Unauthorized."""
+    # Login with a 1-second TTL
+    login_res = api_context.post(
         "/session/login",
-        data={"username": LEARNER_USERNAME, "password": LEARNER_PASSWORD},
+        data={"username": LEARNER_USERNAME, "password": LEARNER_PASSWORD, "ttl_seconds": 1},
     )
-    assert api_context.get("/session/me").status == 200
+    assert login_res.status == 200
 
-    cookie = next(c for c in api_context.cookies() if c["name"] == "session_id")
-    # Force server-side expiration
-    assert session_service.expire_session(cookie["value"]) is True
+    # Wait for session to expire
+    time.sleep(1.1)
 
-    # Immediate rejection
-    res = api_context.get("/session/me")
-    assert res.status == 401
+    # Attempt to refresh the expired session
+    refresh_res = api_context.post("/session/refresh")
+    assert refresh_res.status == 401
+    assert "cannot refresh" in refresh_res.json()["detail"].lower()
+
 
 
 def test_session_status_unauthenticated(api_context: APIRequestContext) -> None:
