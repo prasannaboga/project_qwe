@@ -4,7 +4,11 @@ __pycache__/
 .venv/
 .pytest_cache/
 data/*.sqlite
+data/uploads/
 mynotes.md
 .env
 !.env.example
 .serena
+test-results/*
+.DS_Store
+.env.test
